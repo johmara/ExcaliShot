@@ -67,6 +67,8 @@ The pipeline refuses to publish if the tag does not match the app version, is no
 
 **The version bumps itself.** After a release is published, the pipeline commits "Bump version to ..." to `main` with the next patch version, so the following pre-releases belong to the upcoming release. For a minor or major release, change the version in the three files by hand (and update `package-lock.json` and `src-tauri/Cargo.lock` with `npm install` and `cargo check`) before tagging.
 
+**Pre-releases are cleaned up.** When a real release is published, the pipeline deletes every pre-release (and its `-rc` tag), so the Releases page only shows real releases plus the pre-releases built since. This runs only after all platform packages were published successfully.
+
 ### Update signing
 
 Installed apps update themselves from the release assets (`latest.json` and the signed packages). The CI build signs them with a minisign key: the private key and its password are the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the matching public key is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`. Keep a backup of the private key and password outside GitHub: **if they are lost or replaced, installed copies can no longer verify updates, and everyone has to reinstall by hand.** Never commit the key or paste it into issues or chats. To build installers locally, `npm run tauri build` needs the key available as `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) in the environment, or you can pass `--config '{"bundle":{"createUpdaterArtifacts":false}}'`.

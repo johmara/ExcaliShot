@@ -197,3 +197,30 @@ jobs:
           git commit -m "Bump version to ${next} after v${RELEASED} release"
           git pull --rebase origin main
           git push origin main
+
+  # Once a real release is out, the release candidates leading up to it are noise: delete every
+  # pre-release together with its tag. Runs only after all packages were published.
+  cleanup:
+    name: Delete pre-releases
+    if: github.ref_type == 'tag'
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Delete all pre-releases and their tags
+        run: |
+          set -euo pipefail
+          # Safety check: only clean up if the release we just published really is a full release.
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" != "false" ]; then
+            echo "::error::Release $TAG is missing or is itself a pre-release; not deleting anything."
+            exit 1
+          fi
+
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName' |
+          while read -r old; do
+            echo "Deleting pre-release $old"
+            gh release delete "$old" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
