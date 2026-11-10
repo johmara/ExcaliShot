@@ -1,0 +1,81 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not attach screenshots that contain private information.
+        For security problems, use the private report form on the Security tab instead of this template.
+  - type: input
+    id: version
+    attributes:
+      label: ExcaliShot version
+      description: Shown in the app, or in the name of the package you installed.
+      placeholder: "0.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed it
+      options:
+        - .deb
+        - .rpm
+        - AppImage
+        - macOS .dmg
+        - Windows .msi
+        - Windows .exe
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and desktop
+      description: Include the distribution and version, and the desktop environment on Linux.
+      placeholder: "Ubuntu 26.04, GNOME"
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session type (Linux)
+      options:
+        - Wayland
+        - X11
+        - Not applicable (macOS or Windows)
+    validations:
+      required: true
+  - type: input
+    id: monitors
+    attributes:
+      label: Monitors and scaling
+      placeholder: "2 monitors, 150% and 100%"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you do?
+      description: Steps to reproduce, as exactly as you can.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Terminal output
+      description: If you ran the app from a terminal (`npm run tauri dev` or the installed binary), paste the output.
+      render: shell
