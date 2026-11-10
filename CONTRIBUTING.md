@@ -43,6 +43,27 @@ Open an issue with your OS, desktop environment, session type (Wayland or X11), 
 - Write commit messages in the imperative: "Add monitor capture", not "Added".
 - Describe what changed and why in the pull request, and link the issue if there is one.
 
+## Releases
+
+Packages are built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)), and only after the CI matrix passes on Linux, macOS and Windows.
+
+| Branch | What is published |
+|---|---|
+| `main` | A **pre-release** tagged `v<version>-rc.<run number>`, for example `v0.1.0-rc.7`. Use these to try changes. |
+| `release` | The **real release**, tagged `v<version>`. |
+
+To cut a release:
+
+1. Bump the version to the same value in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`. The pipeline fails if they differ.
+2. Merge to `main` and check that the latest pre-release installs and works.
+3. Fast-forward `release` to `main`:
+
+   ```bash
+   git push origin main:release
+   ```
+
+The pipeline refuses to publish if the tag for that version already exists, so a release always needs a version bump. The installers are `.deb`, `.rpm` and AppImage (Linux), a universal `.dmg` (macOS), and `.msi` and `.exe` (Windows). They are not code-signed yet.
+
 ## License
 
 By contributing you agree that your contribution is licensed under the [MIT License](LICENSE).

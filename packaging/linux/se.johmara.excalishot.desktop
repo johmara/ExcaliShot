@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ExcaliShot
+Comment=Screenshots with Excalidraw annotation
+Exec=excalishot-app
+Icon=excalishot-app
+Terminal=false
+Categories=Utility;Graphics;
+StartupWMClass=se.johmara.excalishot

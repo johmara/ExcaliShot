@@ -1,9 +1,9 @@
 name: CI
 
+# Runs on pull requests, and is called by release.yml before anything is published.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
 
 jobs:
   build:

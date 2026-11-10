@@ -23,6 +23,12 @@ Capture, draw arrows and boxes on it, paste it into a chat.
 
 Tested so far on Ubuntu 26.04 (GNOME, Wayland, three monitors). Contributions for the other platforms are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Install
+
+Download the package for your system from the [Releases](https://github.com/johmara/ExcaliShot/releases) page. Entries marked "Pre-release" are release candidates built from `main`; the one marked "Latest" is the current release.
+
+The packages are not code-signed yet, so macOS and Windows show a warning the first time you open the app.
+
 ## Usage
 
 Start the app. It lives in the system tray (on GNOME you need the AppIndicator extension, which Ubuntu ships by default).

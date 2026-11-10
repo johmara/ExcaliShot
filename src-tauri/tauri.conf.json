@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "excalishot-app",
+  "productName": "ExcaliShot",
+  "mainBinaryName": "excalishot-app",
   "version": "0.1.0",
   "identifier": "se.johmara.excalishot",
   "build": {
@@ -26,6 +27,27 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Johan Martinson",
+    "copyright": "Copyright (c) 2026 Johan Martinson",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "category": "Utility",
+    "shortDescription": "Screenshots with Excalidraw annotation",
+    "longDescription": "Capture a region, a monitor or all monitors, sketch on it with Excalidraw, then copy or save it.",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "../packaging/linux/desktop.template",
+        "files": {
+          "/usr/share/applications/se.johmara.excalishot.desktop": "../packaging/linux/se.johmara.excalishot.desktop"
+        }
+      },
+      "rpm": {
+        "desktopTemplate": "../packaging/linux/desktop.template",
+        "files": {
+          "/usr/share/applications/se.johmara.excalishot.desktop": "../packaging/linux/se.johmara.excalishot.desktop"
+        }
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

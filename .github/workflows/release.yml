@@ -1,0 +1,117 @@
+name: Release
+
+# main    -> GitHub pre-release  v<version>-rc.<run number>
+# release -> GitHub release      v<version>   (the version must be bumped, see CONTRIBUTING.md)
+on:
+  push:
+    branches: [main, release]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  prepare:
+    name: Work out version and tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check versions and choose the tag
+        id: v
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version src-tauri/tauri.conf.json)
+          npm_version=$(jq -r .version package.json)
+          crate_version=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/')
+          if [ "$version" != "$npm_version" ] || [ "$version" != "$crate_version" ]; then
+            echo "::error::Version mismatch: tauri.conf.json=$version package.json=$npm_version Cargo.toml=$crate_version"
+            exit 1
+          fi
+
+          if [ "$GITHUB_REF_NAME" = "release" ]; then
+            tag="v${version}"
+            prerelease=false
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              echo "::error::Tag ${tag} already exists. Bump the version before releasing."
+              exit 1
+            fi
+          else
+            tag="v${version}-rc.${GITHUB_RUN_NUMBER}"
+            prerelease=true
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${tag} (prerelease=${prerelease})"
+
+  publish:
+    name: Package (${{ matrix.name }})
+    needs: [ci, prepare]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest supported Ubuntu, so the .deb and AppImage run on as many distros as possible.
+          - name: Linux
+            os: ubuntu-22.04
+            args: ""
+            rust_targets: ""
+          - name: macOS (universal)
+            os: macos-latest
+            args: --target universal-apple-darwin
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            args: ""
+            rust_targets: ""
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libpipewire-0.3-dev \
+            libgbm-dev libxcb1-dev libxrandr-dev
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ needs.prepare.outputs.tag }}
+          commitish: ${{ github.sha }}
+          releaseName: ExcaliShot ${{ needs.prepare.outputs.tag }}
+          releaseBody: ${{ needs.prepare.outputs.prerelease == 'true' && format('Release candidate built from `main` at {0}. Not for general use; install the release instead.', github.sha) || 'Install the package for your platform below. The builds are not code-signed yet, so macOS and Windows will show a warning on first launch.' }}
+          releaseDraft: false
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          args: ${{ matrix.args }}

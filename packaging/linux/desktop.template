@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories={{categories}}
+Exec={{exec}}
+Icon={{icon}}
+Name={{name}}
+NoDisplay=true
+Terminal=false
+Type=Application
