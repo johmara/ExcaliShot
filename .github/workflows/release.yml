@@ -121,7 +121,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ needs.prepare.outputs.tag }}
-          commitish: ${{ github.sha }}
+          releaseCommitish: ${{ github.sha }}
           releaseName: ExcaliShot ${{ needs.prepare.outputs.tag }}
           releaseBody: ${{ needs.prepare.outputs.prerelease == 'true' && format('Release candidate built from `main` at {0}. Not for general use; install the release instead.', github.sha) || 'Install the package for your platform below. The builds are not code-signed yet, so macOS and Windows will show a warning on first launch.' }}
           releaseDraft: false
