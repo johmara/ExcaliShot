@@ -16,13 +16,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    # Unit tests on Linux are enough as a gate here: the packaging job below compiles macOS and
-    # Windows for real, and pull requests already run the tests on all three.
-    uses: ./.github/workflows/ci.yml
-    with:
-      os: '["ubuntu-latest"]'
-
   prepare:
     name: Work out version and tag
     runs-on: ubuntu-latest
@@ -69,8 +62,8 @@ jobs:
           echo "Publishing ${tag} (prerelease=${prerelease})"
 
   publish:
-    name: Package (${{ matrix.name }})
-    needs: [ci, prepare]
+    name: Test and package (${{ matrix.name }})
+    needs: [prepare]
     strategy:
       fail-fast: false
       matrix:
@@ -93,28 +86,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev \
-            libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libpipewire-0.3-dev \
-            libgbm-dev libxcb1-dev libxrandr-dev
-
-      - uses: actions/setup-node@v7
+      # Installs dependencies, builds the frontend and runs the unit tests. If anything fails
+      # here, nothing is packaged or published for this platform.
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_targets }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - run: npm ci
+          rust_targets: ${{ matrix.rust_targets }}
 
       - uses: tauri-apps/tauri-action@v0
         env:
