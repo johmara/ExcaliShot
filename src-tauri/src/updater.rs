@@ -240,6 +240,36 @@ pub async fn install_update(app: AppHandle, state: State<'_, UpdateState>) -> Re
     }
 }
 
+/// Install the verified package with apt behind a polkit password prompt, then start the new
+/// version. Runs detached (own session) because the package's pre-install script stops this
+/// process. Returns false when pkexec or apt-get is missing, so the caller can fall back.
+#[cfg(not(target_os = "linux"))]
+fn spawn_apt_install(_path: &std::path::Path) -> bool {
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn spawn_apt_install(path: &std::path::Path) -> bool {
+    use std::os::unix::process::CommandExt;
+    let found = |bin: &str| {
+        std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).any(|d| d.join(bin).is_file()))
+            .unwrap_or(false)
+    };
+    if !found("pkexec") || !found("apt-get") {
+        return false;
+    }
+    std::process::Command::new("sh")
+        .args(["-c", r#"pkexec apt-get install -y "$1" && exec excalishot-app"#, "sh"])
+        .arg(path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn()
+        .is_ok()
+}
+
 /// `.deb` installs: fetch the new package and its signature, verify, save to Downloads and open
 /// it with the system installer. The package is never opened if the signature does not match.
 #[tauri::command]
@@ -274,7 +304,10 @@ pub async fn download_package(app: AppHandle) -> Result<(), String> {
 
     match result {
         Ok(path) => {
-            app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(err)?;
+            if !spawn_apt_install(&path) {
+                // No polkit/apt: fall back to whatever the desktop uses for .deb files.
+                app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(err)?;
+            }
             set_status(&app, UpdateStatus::Downloaded { version, path: path.display().to_string() });
             Ok(())
         }
