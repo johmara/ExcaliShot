@@ -31,7 +31,7 @@ jobs:
       tag: ${{ steps.v.outputs.tag }}
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed to check that a release tag is on main
 
@@ -91,7 +91,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -101,7 +101,7 @@ jobs:
             libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libpipewire-0.3-dev \
             libgbm-dev libxcb1-dev libxrandr-dev
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -137,7 +137,7 @@ jobs:
     needs: [prepare, publish]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
 
