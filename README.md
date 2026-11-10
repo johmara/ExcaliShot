@@ -152,10 +152,7 @@ Pushes to `main` publish a pre-release (`vX.Y.Z-rc.N`); pushing a version tag pu
 
 ## Roadmap
 
-- Test and fix macOS and Windows on real hardware (overlay windows, Screen Recording permission, the shortcut recorder).
-- Platform code signing and notarization, so macOS and Windows stop showing warnings.
-- Self-downloading updates for `.rpm` installs.
-- An option to annotate directly on the frozen screen, as Flameshot does.
+Planned work is tracked in [GitHub issues](https://github.com/johmara/ExcaliShot/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap).
 
 ## License
 

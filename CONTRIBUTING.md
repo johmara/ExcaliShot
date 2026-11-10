@@ -30,7 +30,7 @@ For anything that changes behaviour, test it by hand and say how in the pull req
 
 ## Good first contributions
 
-- macOS and Windows capture and shortcuts (see the Roadmap in the README). These need testing on real hardware.
+- macOS and Windows capture and shortcuts (see the [open `roadmap` issues](https://github.com/johmara/ExcaliShot/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap)). These need testing on real hardware.
 - Reports from other Linux desktops (KDE Plasma, Sway, Hyprland, X11 sessions).
 - Self-hosting Excalidraw's fonts inside the editor so it works offline.
 
