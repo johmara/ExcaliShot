@@ -17,7 +17,11 @@ concurrency:
 
 jobs:
   ci:
+    # Unit tests on Linux are enough as a gate here: the packaging job below compiles macOS and
+    # Windows for real, and pull requests already run the tests on all three.
     uses: ./.github/workflows/ci.yml
+    with:
+      os: '["ubuntu-latest"]'
 
   prepare:
     name: Work out version and tag

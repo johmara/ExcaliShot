@@ -4,6 +4,11 @@ name: CI
 on:
   pull_request:
   workflow_call:
+    inputs:
+      os:
+        description: JSON list of runner labels to test on
+        type: string
+        default: '["ubuntu-latest","macos-latest","windows-latest"]'
 
 jobs:
   build:
@@ -12,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.os || '["ubuntu-latest","macos-latest","windows-latest"]') }}
 
     steps:
       - uses: actions/checkout@v4
@@ -43,10 +48,10 @@ jobs:
       - name: Build frontend (type-check and bundle)
         run: npm run build
 
+      # Cargo.toml builds dependencies at opt-level 3 so image handling is fast in local dev
+      # builds. CI does not need that, and it compiles much faster without it. `cargo test`
+      # already compiles every target, so no separate `cargo check` is needed.
       - name: Rust unit tests
         working-directory: src-tauri
-        run: cargo test --locked
-
-      - name: Rust compile check
-        working-directory: src-tauri
-        run: cargo check --locked --all-targets
+        shell: bash
+        run: cargo test --locked --config 'profile.dev.package."*".opt-level=0'
