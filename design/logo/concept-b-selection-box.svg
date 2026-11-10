@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Concept B - wobbly selection box with handles</title>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#5B57D1"/>
+  <!-- Wobbly rough rectangle drawn with a double stroke, like Excalidraw -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="56" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M246 262 C380 250 640 256 780 258 C772 400 786 600 776 762 C640 770 400 760 250 766 C258 620 240 400 246 262"/>
+    <path d="M262 250 C400 262 620 244 770 270 C790 420 770 610 764 774"/>
+  </g>
+  <g fill="#FFC53D">
+    <rect x="212" y="228" width="68" height="68" rx="14"/>
+    <rect x="746" y="228" width="68" height="68" rx="14"/>
+    <rect x="746" y="732" width="68" height="68" rx="14"/>
+    <rect x="212" y="732" width="68" height="68" rx="14"/>
+  </g>
+</svg>

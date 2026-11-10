@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>ExcaliShot</title>
+  <!-- Tile: opaque indigo, so the logo reads the same on light and dark backgrounds -->
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#5B57D1"/>
+  <!-- Hand-drawn capture brackets (white) -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="76" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M250 440 C248 392 244 340 250 306 C256 270 276 252 312 252 C344 252 392 256 436 250"/>
+    <path d="M588 254 C632 250 680 252 712 254 C750 256 772 272 774 310 C776 344 772 396 778 438"/>
+    <path d="M774 586 C772 632 776 680 772 714 C768 752 746 770 710 772 C678 774 630 770 586 776"/>
+    <path d="M436 772 C392 776 344 772 312 770 C274 768 254 750 252 712 C250 680 254 632 248 588"/>
+  </g>
+  <!-- Hand-drawn arrow (amber), shaft + open head like Excalidraw -->
+  <g fill="none" stroke="#FFC53D" stroke-width="84" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M368 656 C448 578 560 466 650 380"/>
+    <path d="M536 388 C580 382 620 380 654 374 C652 410 648 452 642 496"/>
+  </g>
+</svg>

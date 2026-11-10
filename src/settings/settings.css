@@ -1,0 +1,193 @@
+/* Excalidraw-inspired look: indigo accent, soft rounded "islands", hand-drawn headings.
+   Fonts are self-hosted from public/fonts (see README); system fonts are the fallback. */
+@font-face {
+  font-family: "Excalifont";
+  src: url("/fonts/Excalifont-Regular.woff2") format("woff2");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Assistant";
+  src: url("/fonts/Assistant-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Assistant";
+  src: url("/fonts/Assistant-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* Remove the default page margin and paint the page itself, so no white frame shows around the window. */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  html,
+  body,
+  #root {
+    background: #121212;
+  }
+}
+
+.settings {
+  --bg: #ffffff;
+  --island: #ffffff;
+  --border: #ced4da;
+  --text: #1b1b1f;
+  --muted: #5c5f66;
+  --primary: #6965db;
+  --primary-hover: #5b57d1;
+  --primary-light: #e3e2fe;
+  --on-primary: #ffffff;
+  --secondary: #e9ecef;
+  --secondary-hover: #dee2e6;
+  --danger: #db6965;
+  --shadow: 0 7px 14px rgba(0, 0, 0, 0.07), 0 0 3px rgba(0, 0, 0, 0.12);
+
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 24px 28px 40px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Assistant", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings {
+    --bg: #121212;
+    --island: #232329;
+    --border: #3b3b45;
+    --text: #e3e3e8;
+    --muted: #a0a0ab;
+    --primary: #a8a5ff;
+    --primary-hover: #bbb8ff;
+    --primary-light: #3a3a5c;
+    --on-primary: #1b1b1f;
+    --secondary: #2e2d39;
+    --secondary-hover: #3b3a49;
+    --shadow: 0 7px 14px rgba(0, 0, 0, 0.4), 0 0 3px rgba(0, 0, 0, 0.5);
+  }
+}
+
+.settings h1,
+.settings h2 {
+  font-family: "Excalifont", "Segoe Print", "Comic Sans MS", "Chalkboard SE", cursive;
+  font-weight: 400;
+  margin: 0;
+}
+.settings h1 {
+  font-size: 34px;
+  color: var(--primary);
+}
+.settings h2 {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+.settings .squiggle {
+  display: block;
+  margin: 2px 0 6px;
+  color: var(--primary);
+}
+.settings .tagline {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+.island {
+  background: var(--island);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px 18px;
+  margin-bottom: 18px;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  background: var(--secondary);
+  color: var(--text);
+  transition: background 0.1s;
+}
+.btn:hover {
+  background: var(--secondary-hover);
+}
+.btn.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn.primary:hover {
+  background: var(--primary-hover);
+}
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.error {
+  color: var(--danger);
+  margin: 0 0 10px;
+}
+
+.shortcut-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+}
+.shortcut-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.shortcut-list li:last-child {
+  border-bottom: 0;
+}
+kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: center;
+  padding: 2px 8px;
+  margin-left: 4px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--primary-light);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.unassigned {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}

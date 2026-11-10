@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Concept C - hand-drawn crosshair</title>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#5B57D1"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="64" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512 232 C700 226 800 330 796 516 C792 700 690 796 510 794 C330 792 228 696 230 514 C232 340 330 236 512 232"/>
+    <path d="M512 120 C514 160 510 190 512 232"/>
+    <path d="M512 794 C510 836 514 870 512 904"/>
+    <path d="M120 514 C160 512 196 516 230 514"/>
+    <path d="M796 516 C836 514 870 518 904 514"/>
+  </g>
+  <circle cx="512" cy="514" r="52" fill="#FFC53D"/>
+</svg>
