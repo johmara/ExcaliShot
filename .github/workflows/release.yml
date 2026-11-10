@@ -1,10 +1,12 @@
 name: Release
 
-# main    -> GitHub pre-release  v<version>-rc.<run number>
-# release -> GitHub release      v<version>   (the version must be bumped, see CONTRIBUTING.md)
+# push to main        -> GitHub pre-release  v<version>-rc.<run number>
+# push of tag vX.Y.Z  -> GitHub release      vX.Y.Z, then main is bumped to the next patch version
+#                        (rc tags such as v0.1.1-rc.3 do not match the pattern below)
 on:
   push:
-    branches: [main, release]
+    branches: [main]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 permissions:
   contents: write
@@ -26,6 +28,8 @@ jobs:
       prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # needed to check that a release tag is on main
 
       - name: Check versions and choose the tag
         id: v
@@ -39,13 +43,17 @@ jobs:
             exit 1
           fi
 
-          if [ "$GITHUB_REF_NAME" = "release" ]; then
-            tag="v${version}"
-            prerelease=false
-            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-              echo "::error::Tag ${tag} already exists. Bump the version before releasing."
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+            if [ "$tag" != "v${version}" ]; then
+              echo "::error::Tag $tag does not match the app version $version. Tag the commit that carries version $version."
               exit 1
             fi
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::Tag $tag is not on main. Releases must be tagged on a commit that is part of main."
+              exit 1
+            fi
+            prerelease=false
           else
             tag="v${version}-rc.${GITHUB_RUN_NUMBER}"
             prerelease=true
@@ -115,3 +123,55 @@ jobs:
           releaseDraft: false
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           args: ${{ matrix.args }}
+
+  # After a real release, move main on to the next patch version so the next rc builds
+  # are labelled for the upcoming release. Pushes made with GITHUB_TOKEN do not start new
+  # workflow runs, so this does not trigger another rc build.
+  bump:
+    name: Bump main to the next version
+    if: github.ref_type == 'tag'
+    needs: [prepare, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Bump to the next patch version
+        env:
+          RELEASED: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          current=$(jq -r .version src-tauri/tauri.conf.json)
+          if [ "$current" != "$RELEASED" ]; then
+            echo "main is already at $current, nothing to bump"
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "$RELEASED"
+          next="${major}.${minor}.$((patch + 1))"
+
+          # tauri.conf.json and Cargo.toml: first version entry only (sed keeps the diff minimal)
+          sed -i -E '0,/"version": *"[^"]*"/s//"version": "'"$next"'"/' src-tauri/tauri.conf.json
+          sed -i -E '0,/^version = "[^"]*"/s//version = "'"$next"'"/' src-tauri/Cargo.toml
+          # package.json and package-lock.json
+          npm version "$next" --no-git-tag-version
+          # Cargo.lock must match, or `cargo --locked` fails in CI
+          NEXT="$next" perl -0pi -e 's/(name = "excalishot-app"\nversion = ")[^"]+(")/$1$ENV{NEXT}$2/' src-tauri/Cargo.lock
+
+          # Refuse to push a half-applied bump.
+          for v in "$(jq -r .version src-tauri/tauri.conf.json)" "$(jq -r .version package.json)" \
+                   "$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/version *= *"([^"]+)".*/\1/')" \
+                   "$(grep -A1 '^name = "excalishot-app"' src-tauri/Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')"; do
+            if [ "$v" != "$next" ]; then
+              echo "::error::Version bump left a file at $v instead of $next"
+              exit 1
+            fi
+          done
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Bump version to ${next} after v${RELEASED} release"
+          git pull --rebase origin main
+          git push origin main

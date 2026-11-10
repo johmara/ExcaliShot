@@ -47,22 +47,27 @@ Open an issue with your OS, desktop environment, session type (Wayland or X11), 
 
 Packages are built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)), and only after the CI matrix passes on Linux, macOS and Windows.
 
-| Branch | What is published |
+| Trigger | What is published |
 |---|---|
-| `main` | A **pre-release** tagged `v<version>-rc.<run number>`, for example `v0.1.0-rc.7`. Use these to try changes. |
-| `release` | The **real release**, tagged `v<version>`. |
+| Push to `main` | A **pre-release** tagged `v<version>-rc.<run number>`, for example `v0.1.1-rc.7`. Use these to try changes. |
+| Push of a tag `vX.Y.Z` | The **real release** `vX.Y.Z`. |
 
 To cut a release:
 
-1. Bump the version to the same value in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`. The pipeline fails if they differ.
-2. Merge to `main` and check that the latest pre-release installs and works.
-3. Fast-forward `release` to `main`:
+1. Check that the latest pre-release from `main` installs and works.
+2. Tag the commit on `main` with the version it carries (the `version` in `src-tauri/tauri.conf.json`) and push the tag:
 
    ```bash
-   git push origin main:release
+   git tag v0.1.1 && git push origin v0.1.1
    ```
 
-The pipeline refuses to publish if the tag for that version already exists, so a release always needs a version bump. The installers are `.deb`, `.rpm` and AppImage (Linux), a universal `.dmg` (macOS), and `.msi` and `.exe` (Windows). They are not code-signed yet.
+   You can also use **Create release** on GitHub with a new tag `v0.1.1` that targets `main`. The pipeline then builds the packages and attaches them to that release.
+
+The pipeline refuses to publish if the tag does not match the app version, is not on `main`, or if the three version files (`tauri.conf.json`, `Cargo.toml`, `package.json`) disagree.
+
+**The version bumps itself.** After a release is published, the pipeline commits "Bump version to ..." to `main` with the next patch version, so the following pre-releases belong to the upcoming release. For a minor or major release, change the version in the three files by hand (and update `package-lock.json` and `src-tauri/Cargo.lock` with `npm install` and `cargo check`) before tagging.
+
+The installers are `.deb`, `.rpm` and AppImage (Linux), a universal `.dmg` (macOS), and `.msi` and `.exe` (Windows). They are not code-signed yet.
 
 ## License
 
