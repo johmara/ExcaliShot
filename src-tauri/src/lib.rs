@@ -91,6 +91,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // Needs `plugins.updater` (public key and endpoint) in tauri.conf.json.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState::default())
         .manage(shortcuts::PortalState::default())
         .manage(shortcuts::StatusState::default())
@@ -130,7 +131,7 @@ pub fn run() {
                         // button) is shown.
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            updater::check(&app).await;
+                            updater::check(&app, false).await;
                             show_main(&app);
                         });
                     }
@@ -150,13 +151,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Quiet update check shortly after startup (not in dev builds). A plain thread, so
-            // the delay does not need an extra async-timer dependency.
+            // Background update check shortly after startup and then once a day (not in dev
+            // builds), with a notification when a new version appears. A plain thread, so the
+            // waits do not need an extra async-timer dependency.
             if !cfg!(debug_assertions) {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(15));
-                    tauri::async_runtime::block_on(updater::check(&handle));
+                    loop {
+                        tauri::async_runtime::block_on(updater::check(&handle, true));
+                        std::thread::sleep(std::time::Duration::from_secs(24 * 60 * 60));
+                    }
                 });
             }
 
@@ -205,6 +210,7 @@ pub fn run() {
             updater::update_status,
             updater::check_for_update,
             updater::install_update,
+            updater::download_package,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -9,7 +9,17 @@ const RELEASES_URL = "https://github.com/johmara/ExcaliShot/releases/latest";
 
 type UpdateStatus =
   | { state: "idle" | "checking" | "upToDate" | "installing" }
-  | { state: "available"; version: string; notes: string | null; canInstall: boolean }
+  | {
+      state: "available";
+      version: string;
+      notes: string | null;
+      /** The app can replace itself and restart (macOS, Windows, AppImage). */
+      canInstall: boolean;
+      /** A .deb install can download the new package itself and open the system installer. */
+      canDownload: boolean;
+    }
+  | { state: "downloading"; version: string }
+  | { state: "downloaded"; version: string; path: string }
   | { state: "error"; message: string };
 
 type ShortcutStatus = {
@@ -205,6 +215,9 @@ export default function Settings() {
           {update.state === "installing" && "Downloading and installing the update..."}
           {update.state === "error" && `Could not check for updates: ${update.message}`}
           {update.state === "available" && `Version ${update.version} is available.`}
+          {update.state === "downloading" && `Downloading and verifying version ${update.version}...`}
+          {update.state === "downloaded" &&
+            `Version ${update.version} was downloaded and verified (${update.path}). Finish the installation in the installer that opened, then start ExcaliShot again.`}
         </p>
         {update.state === "available" && update.notes && <p className="hint">{update.notes}</p>}
         <div className="btn-row">
@@ -213,20 +226,33 @@ export default function Settings() {
               Install {update.version} and restart
             </button>
           )}
-          {update.state === "available" && !update.canInstall && (
+          {update.state === "available" && !update.canInstall && update.canDownload && (
+            <button className="btn primary" onClick={() => invoke("download_package").catch(() => {})}>
+              Download and install {update.version}
+            </button>
+          )}
+          {update.state === "available" && !update.canInstall && !update.canDownload && (
             <button className="btn primary" onClick={() => openUrl(RELEASES_URL)}>
               Download {update.version} from GitHub
             </button>
           )}
           <button
             className="btn"
-            disabled={update.state === "checking" || update.state === "installing"}
+            disabled={
+              update.state === "checking" || update.state === "installing" || update.state === "downloading"
+            }
             onClick={() => invoke("check_for_update").catch(() => {})}
           >
             Check for updates
           </button>
         </div>
-        {update.state === "available" && !update.canInstall && (
+        {update.state === "available" && !update.canInstall && update.canDownload && (
+          <p className="hint">
+            The package is downloaded, checked against ExcaliShot&apos;s signing key, and opened in your
+            system installer, which asks for your password.
+          </p>
+        )}
+        {update.state === "available" && !update.canInstall && !update.canDownload && (
           <p className="hint">This installation cannot update itself; install the new package over it.</p>
         )}
       </section>

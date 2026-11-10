@@ -146,6 +146,30 @@ jobs:
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
           args: ${{ matrix.args }}
 
+      # The updater signs its own artifacts (AppImage, installers), but not the .deb. The app
+      # downloads the .deb itself on Debian-family systems, so it gets a detached signature made
+      # with the same key; the app refuses to open a package whose signature does not verify.
+      - name: Sign the .deb and attach the signature
+        if: github.event_name != 'pull_request' && runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          debs=(src-tauri/target/release/bundle/deb/*.deb)
+          if [ "${#debs[@]}" -eq 0 ]; then
+            echo "::error::No .deb found to sign"
+            exit 1
+          fi
+          for deb in "${debs[@]}"; do
+            npm run tauri -- signer sign "$deb"
+            gh release upload "$TAG" "$deb.sig" --clobber --repo "$GITHUB_REPOSITORY"
+          done
+
   # After a real release, move main on to the next patch version so the next rc builds
   # are labelled for the upcoming release. Pushes made with GITHUB_TOKEN do not start new
   # workflow runs, so this does not trigger another rc build.
