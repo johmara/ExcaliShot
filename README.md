@@ -87,7 +87,7 @@ npm run tauri build    # produce installable bundles
 The shortcuts portal needs the app to have an installed `.desktop` file that matches its ID, `se.johmara.excalishot`. A `tauri dev` binary has none, so create one that points at the debug binary:
 
 ```bash
-printf '[Desktop Entry]\nType=Application\nName=ExcaliShot\nExec=%s/src-tauri/target/debug/excalishot-app\nIcon=applets-screenshooter\nTerminal=false\nCategories=Utility;\n' "$PWD" > ~/.local/share/applications/se.johmara.excalishot.desktop
+printf '[Desktop Entry]\nType=Application\nName=ExcaliShot\nExec=%s/src-tauri/target/debug/excalishot-app\nIcon=applets-screenshooter\nTerminal=false\nCategories=Utility;\nStartupWMClass=excalishot-app\n' "$PWD" > ~/.local/share/applications/se.johmara.excalishot.desktop
 ```
 
 The same file is why the GNOME dock shows a generic icon in dev builds. Installed bundles ship their own `.desktop` file.

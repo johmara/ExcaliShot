@@ -6,4 +6,6 @@ Exec=excalishot-app
 Icon=excalishot-app
 Terminal=false
 Categories=Utility;Graphics;
-StartupWMClass=se.johmara.excalishot
+# The window announces itself by the binary name, so that is what GNOME must match to find this
+# file's icon. (The file name, se.johmara.excalishot, is the app ID the portals use.)
+StartupWMClass=excalishot-app
