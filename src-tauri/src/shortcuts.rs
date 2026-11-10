@@ -11,6 +11,8 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::{flow::Mode, settings::Settings};
 
+/// Only the Linux portal backend needs it to register the app.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub const APP_ID: &str = "se.johmara.excalishot";
 
 /// id, description, preferred trigger, capture mode.
@@ -74,6 +76,7 @@ pub fn normalize_accelerator(raw: &str) -> String {
 
 /// Normalise portal trigger descriptions ("Press <Shift><Control>1") to "Ctrl+Shift+1".
 /// Anything without `<Mod>` tokens is returned trimmed and unchanged.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // only the Linux portal backend calls it
 pub fn pretty_trigger(raw: &str) -> String {
     let s = raw.trim();
     let s = s.strip_prefix("Press ").unwrap_or(s).trim();
