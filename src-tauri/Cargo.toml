@@ -28,6 +28,7 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 chrono = "0.4.45"
 tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-autostart = "2.7.0"
+tauri-plugin-updater = "2.14.1"
 
 
 # Dependencies (image decoding/encoding in particular) are unusably slow unoptimized, which made

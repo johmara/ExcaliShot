@@ -29,6 +29,13 @@ Download the package for your system from the [Releases](https://github.com/johm
 
 The packages are not code-signed yet, so macOS and Windows show a warning the first time you open the app.
 
+### Updates
+
+ExcaliShot checks for a new release shortly after it starts, and from **Check for updates...** in the tray menu or the settings window. Only real releases are offered, never the pre-releases. Updates are verified against a signature before they are installed.
+
+- **macOS, Windows and the Linux AppImage** install the update and restart with one click.
+- **Linux `.deb` and `.rpm` installs** cannot replace themselves: the settings window offers a download link, and you install the new package over the old one.
+
 ## Usage
 
 Start the app. It lives in the system tray (on GNOME you need the AppIndicator extension, which Ubuntu ships by default).

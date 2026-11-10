@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
+import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import "./settings.css";
+
+const RELEASES_URL = "https://github.com/johmara/ExcaliShot/releases/latest";
+
+type UpdateStatus =
+  | { state: "idle" | "checking" | "upToDate" | "installing" }
+  | { state: "available"; version: string; notes: string | null; canInstall: boolean }
+  | { state: "error"; message: string };
 
 type ShortcutStatus = {
   backend: string;
@@ -56,6 +66,18 @@ export default function Settings() {
   const [status, setStatus] = useState<ShortcutStatus>();
   const [msg, setMsg] = useState("");
   const [autostart, setAutostart] = useState(false);
+  const [update, setUpdate] = useState<UpdateStatus>({ state: "idle" });
+  const [version, setVersion] = useState("");
+
+  // The backend checks for updates at startup and from the tray; follow whatever it reports.
+  useEffect(() => {
+    getVersion().then(setVersion, () => {});
+    invoke<UpdateStatus>("update_status").then(setUpdate, () => {});
+    const unlisten = listen<UpdateStatus>("update-status", (e) => setUpdate(e.payload));
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
   /** Id of the shortcut currently waiting for a new key combination. */
   const [recording, setRecording] = useState<string | null>(null);
 
@@ -172,6 +194,41 @@ export default function Settings() {
           </button>
         )}
         {msg && <p className="hint">{msg}</p>}
+      </section>
+
+      <section className="island">
+        <h2>Updates</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          {version && `Version ${version}. `}
+          {update.state === "checking" && "Checking for updates..."}
+          {update.state === "upToDate" && "You are up to date."}
+          {update.state === "installing" && "Downloading and installing the update..."}
+          {update.state === "error" && `Could not check for updates: ${update.message}`}
+          {update.state === "available" && `Version ${update.version} is available.`}
+        </p>
+        {update.state === "available" && update.notes && <p className="hint">{update.notes}</p>}
+        <div className="btn-row">
+          {update.state === "available" && update.canInstall && (
+            <button className="btn primary" onClick={() => invoke("install_update").catch(() => {})}>
+              Install {update.version} and restart
+            </button>
+          )}
+          {update.state === "available" && !update.canInstall && (
+            <button className="btn primary" onClick={() => openUrl(RELEASES_URL)}>
+              Download {update.version} from GitHub
+            </button>
+          )}
+          <button
+            className="btn"
+            disabled={update.state === "checking" || update.state === "installing"}
+            onClick={() => invoke("check_for_update").catch(() => {})}
+          >
+            Check for updates
+          </button>
+        </div>
+        {update.state === "available" && !update.canInstall && (
+          <p className="hint">This installation cannot update itself; install the new package over it.</p>
+        )}
       </section>
 
       <section className="island">

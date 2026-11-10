@@ -1,9 +1,11 @@
-name: Release
+name: Build and release
 
-# push to main        -> GitHub pre-release  v<version>-rc.<run number>
-# push of tag vX.Y.Z  -> GitHub release      vX.Y.Z, then main is bumped to the next patch version
-#                        (rc tags such as v0.1.1-rc.3 do not match the pattern below)
+# pull request       -> build and test on Linux, macOS and Windows (nothing is published)
+# push to main       -> the same, then a GitHub pre-release  v<version>-rc.<run number>
+# push of tag vX.Y.Z -> the same, then a GitHub release      vX.Y.Z, and main is bumped to the next
+#                       patch version (rc tags such as v0.1.1-rc.3 do not match the pattern below)
 on:
+  pull_request:
   push:
     branches: [main]
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
@@ -13,7 +15,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   prepare:
@@ -61,8 +63,8 @@ jobs:
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
           echo "Publishing ${tag} (prerelease=${prerelease})"
 
-  publish:
-    name: Test and package (${{ matrix.name }})
+  build:
+    name: Build (${{ matrix.name }})
     needs: [prepare]
     strategy:
       fail-fast: false
@@ -84,17 +86,57 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out the code
+        uses: actions/checkout@v7
 
-      # Installs dependencies, builds the frontend and runs the unit tests. If anything fails
-      # here, nothing is packaged or published for this platform.
-      - uses: ./.github/actions/setup
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file libwebkit2gtk-4.1-dev libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libpipewire-0.3-dev \
+            libgbm-dev libxcb1-dev libxrandr-dev
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
         with:
-          rust_targets: ${{ matrix.rust_targets }}
+          node-version: 22
+          cache: npm
 
-      - uses: tauri-apps/tauri-action@v0
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # The Rust build embeds the built frontend, so it has to exist before cargo runs.
+      # This also type-checks the frontend.
+      - name: Build frontend (type-check and bundle)
+        run: npm run build
+
+      # Cargo.toml builds dependencies at opt-level 3 so image handling is fast in local dev
+      # builds. Tests do not need that and compile much faster without it. `cargo test` compiles
+      # every target, so no separate `cargo check` is needed. If this fails, nothing is packaged.
+      - name: Rust unit tests
+        working-directory: src-tauri
+        shell: bash
+        run: cargo test --locked --config 'profile.dev.package."*".opt-level=0'
+
+      - name: Package and publish
+        if: github.event_name != 'pull_request'
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the update artifacts. The matching public key is in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseCommitish: ${{ github.sha }}
@@ -110,7 +152,7 @@ jobs:
   bump:
     name: Bump main to the next version
     if: github.ref_type == 'tag'
-    needs: [prepare, publish]
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

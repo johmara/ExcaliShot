@@ -4,6 +4,7 @@ mod monitors;
 mod settings;
 mod shortcuts;
 mod stitch;
+mod updater;
 
 use flow::{AppState, Mode};
 use tauri::{
@@ -19,6 +20,7 @@ struct TrayItems {
     monitor: MenuItem<Wry>,
     full: MenuItem<Wry>,
     autostart: CheckMenuItem<Wry>,
+    update: MenuItem<Wry>,
 }
 
 /// `excalishot capture region|monitor|full`
@@ -87,10 +89,13 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
+        // Needs `plugins.updater` (public key and endpoint) in tauri.conf.json.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::default())
         .manage(shortcuts::PortalState::default())
         .manage(shortcuts::StatusState::default())
         .manage(shortcuts::SettingsState::default())
+        .manage(updater::UpdateState::default())
         .setup(|app| {
             let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
             let region = MenuItem::with_id(app, "region", "Capture region", true, None::<&str>)?;
@@ -99,14 +104,18 @@ pub fn run() {
             let autostart = CheckMenuItem::with_id(app, "autostart", "Start on login", true, autostart_on, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
             let shortcuts_item = MenuItem::with_id(app, "shortcuts", "Change shortcuts...", true, None::<&str>)?;
+            let update_item = MenuItem::with_id(app, "update", "Check for updates...", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let sep1 = PredefinedMenuItem::separator(app)?;
             let sep2 = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(
                 app,
-                &[&region, &monitor, &full, &sep1, &autostart, &settings_item, &shortcuts_item, &sep2, &quit],
+                &[
+                    &region, &monitor, &full, &sep1, &autostart, &settings_item, &shortcuts_item,
+                    &update_item, &sep2, &quit,
+                ],
             )?;
-            app.manage(TrayItems { region, monitor, full, autostart });
+            app.manage(TrayItems { region, monitor, full, autostart, update: update_item });
 
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("window icon").clone())
@@ -116,6 +125,15 @@ pub fn run() {
                     "monitor" => trigger(app, Mode::Monitor),
                     "full" => trigger(app, Mode::Full),
                     "settings" | "shortcuts" => show_main(app),
+                    "update" => {
+                        // Check, then open the settings window where the result (and the install
+                        // button) is shown.
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            updater::check(&app).await;
+                            show_main(&app);
+                        });
+                    }
                     "autostart" => {
                         // The check item has already toggled itself; make the system match it.
                         let items = app.state::<TrayItems>();
@@ -131,6 +149,16 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // Quiet update check shortly after startup (not in dev builds). A plain thread, so
+            // the delay does not need an extra async-timer dependency.
+            if !cfg!(debug_assertions) {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    tauri::async_runtime::block_on(updater::check(&handle));
+                });
+            }
 
             // Hidden overlay windows, ready before the first capture.
             flow::preload_overlays(app.handle());
@@ -174,6 +202,9 @@ pub fn run() {
             shortcuts::set_shortcut,
             autostart_get,
             autostart_set,
+            updater::update_status,
+            updater::check_for_update,
+            updater::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

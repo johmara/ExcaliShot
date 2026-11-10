@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "publisher": "Johan Martinson",
     "copyright": "Copyright (c) 2026 Johan Martinson",
     "license": "MIT",
@@ -55,5 +56,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlDNDMxMjI5QzVDMjBBQTAKUldTZ0NzTEZLUkpEbkVJNFVFN2pZUVNxWGdaRnphRVFaZVBET3FOL1VBc2t4Y1FWemxJYldFNTIK",
+      "endpoints": [
+        "https://github.com/johmara/ExcaliShot/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

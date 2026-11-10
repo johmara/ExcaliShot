@@ -45,7 +45,7 @@ Open an issue with your OS, desktop environment, session type (Wayland or X11), 
 
 ## Releases
 
-Packages are built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)), and only after the CI matrix passes on Linux, macOS and Windows.
+One GitHub Actions workflow ([`release.yml`](.github/workflows/release.yml)) does both jobs. On pull requests it builds and tests on Linux, macOS and Windows. On pushes to `main` and on release tags it does the same and then packages and publishes, per platform, only if that platform's unit tests passed.
 
 | Trigger | What is published |
 |---|---|
@@ -66,6 +66,10 @@ To cut a release:
 The pipeline refuses to publish if the tag does not match the app version, is not on `main`, or if the three version files (`tauri.conf.json`, `Cargo.toml`, `package.json`) disagree.
 
 **The version bumps itself.** After a release is published, the pipeline commits "Bump version to ..." to `main` with the next patch version, so the following pre-releases belong to the upcoming release. For a minor or major release, change the version in the three files by hand (and update `package-lock.json` and `src-tauri/Cargo.lock` with `npm install` and `cargo check`) before tagging.
+
+### Update signing
+
+Installed apps update themselves from the release assets (`latest.json` and the signed packages). The CI build signs them with a minisign key: the private key and its password are the repository secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the matching public key is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`. Keep a backup of the private key and password outside GitHub: **if they are lost or replaced, installed copies can no longer verify updates, and everyone has to reinstall by hand.** Never commit the key or paste it into issues or chats. To build installers locally, `npm run tauri build` needs the key available as `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) in the environment, or you can pass `--config '{"bundle":{"createUpdaterArtifacts":false}}'`.
 
 The installers are `.deb`, `.rpm` and AppImage (Linux), a universal `.dmg` (macOS), and `.msi` and `.exe` (Windows). They are not code-signed yet.
 
