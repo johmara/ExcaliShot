@@ -38,12 +38,16 @@
     "linux": {
       "deb": {
         "desktopTemplate": "../packaging/linux/desktop.template",
+        "preInstallScript": "../packaging/linux/stop-running.sh",
+        "preRemoveScript": "../packaging/linux/stop-running.sh",
         "files": {
           "/usr/share/applications/se.johmara.excalishot.desktop": "../packaging/linux/se.johmara.excalishot.desktop"
         }
       },
       "rpm": {
         "desktopTemplate": "../packaging/linux/desktop.template",
+        "preInstallScript": "../packaging/linux/stop-running.sh",
+        "preRemoveScript": "../packaging/linux/stop-running.sh",
         "files": {
           "/usr/share/applications/se.johmara.excalishot.desktop": "../packaging/linux/se.johmara.excalishot.desktop"
         }
