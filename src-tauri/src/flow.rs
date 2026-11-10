@@ -138,7 +138,6 @@ pub async fn start(app: AppHandle, mode: Mode) -> Result<(), String> {
     hide_overlays(&app);
     close_windows(&app, "editor");
 
-    let desktop = capture::grab_desktop().await?;
     let mons: Vec<Rect> = app
         .available_monitors()
         .map_err(err)?
@@ -151,6 +150,7 @@ pub async fn start(app: AppHandle, mode: Mode) -> Result<(), String> {
         })
         .collect();
     let bbox = monitors::bounding_box(&mons).ok_or("no monitors found")?;
+    let desktop = capture::grab_desktop(&mons).await?;
     let state = app.state::<AppState>();
 
     if mode == Mode::Full {

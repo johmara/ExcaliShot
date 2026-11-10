@@ -130,6 +130,15 @@ body,
 .btn.primary:hover {
   background: var(--primary-hover);
 }
+.btn.small {
+  padding: 3px 10px;
+  font-size: 13px;
+}
+.row-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .btn-row {
   display: flex;
   flex-wrap: wrap;

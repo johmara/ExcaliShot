@@ -1,7 +1,9 @@
 mod capture;
 mod flow;
 mod monitors;
+mod settings;
 mod shortcuts;
+mod stitch;
 
 use flow::{AppState, Mode};
 use tauri::{
@@ -71,18 +73,24 @@ fn autostart_set(app: AppHandle, enabled: bool) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Must be first. A second launch (e.g. `excalishot capture region` bound to a desktop
         // keybinding) forwards its arguments here and exits.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| match parse_cli(&argv) {
             Some(mode) => trigger(app, mode),
             None => show_main(app),
-        }))
+        }));
+    // Linux gets its shortcuts from the xdg-desktop-portal instead (see shortcuts.rs).
+    #[cfg(not(target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_global_shortcut::Builder::new().build());
+
+    builder
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .manage(shortcuts::PortalState::default())
         .manage(shortcuts::StatusState::default())
+        .manage(shortcuts::SettingsState::default())
         .setup(|app| {
             let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
             let region = MenuItem::with_id(app, "region", "Capture region", true, None::<&str>)?;
@@ -163,6 +171,7 @@ pub fn run() {
             flow::save_png,
             shortcuts::shortcut_status,
             shortcuts::configure_shortcuts,
+            shortcuts::set_shortcut,
             autostart_get,
             autostart_set,
         ])

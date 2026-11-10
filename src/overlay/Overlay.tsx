@@ -16,7 +16,7 @@ export default function Overlay({ index }: { index: number }) {
   const [src, setSrc] = useState<string>();
   const [drag, setDrag] = useState<Drag>(null);
   const picked = useRef(false);
-  const urlRef = useRef<string>();
+  const urlRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     // The page background must never flash white while the window appears.

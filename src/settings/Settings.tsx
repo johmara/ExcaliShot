@@ -4,9 +4,28 @@ import "./settings.css";
 
 type ShortcutStatus = {
   backend: string;
+  /** False when the desktop owns the shortcuts (Linux portal). */
+  editable: boolean;
   error: string | null;
-  shortcuts: { id: string; description: string; trigger: string }[];
+  shortcuts: { id: string; description: string; trigger: string; problem: string | null }[];
 };
+
+/** Build an accelerator like "Ctrl+Shift+1" from a key press. Returns null until a real key with a modifier is pressed. */
+function accelFromEvent(e: KeyboardEvent): string | null {
+  if (/^(Control|Shift|Alt|Meta|OS)(Left|Right)?$/.test(e.code)) return null;
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push("Ctrl");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Super");
+  if (mods.length === 0) return null; // a bare key would hijack normal typing everywhere
+  const key = e.code.startsWith("Key")
+    ? e.code.slice(3)
+    : e.code.startsWith("Digit")
+      ? e.code.slice(5)
+      : e.code;
+  return [...mods, key].join("+");
+}
 
 /** Hand-drawn underline, in the spirit of Excalidraw's marker strokes. */
 function Squiggle() {
@@ -37,10 +56,36 @@ export default function Settings() {
   const [status, setStatus] = useState<ShortcutStatus>();
   const [msg, setMsg] = useState("");
   const [autostart, setAutostart] = useState(false);
+  /** Id of the shortcut currently waiting for a new key combination. */
+  const [recording, setRecording] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<boolean>("autostart_get").then(setAutostart, () => {});
   }, []);
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        setRecording(null);
+        return;
+      }
+      const accelerator = accelFromEvent(e);
+      if (!accelerator) return;
+      setRecording(null);
+      invoke<ShortcutStatus>("set_shortcut", { id: recording, accelerator }).then(
+        (s) => {
+          setStatus(s);
+          setMsg("");
+        },
+        (err) => setMsg(String(err)),
+      );
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [recording]);
 
   // Shortcut binding finishes asynchronously after startup (and may wait on a GNOME dialog), so poll briefly.
   useEffect(() => {
@@ -96,14 +141,36 @@ export default function Settings() {
         <ul className="shortcut-list">
           {status?.shortcuts.map((s) => (
             <li key={s.id}>
-              <span>{s.description}</span>
-              <Keys trigger={s.trigger} />
+              <span>
+                {s.description}
+                {s.problem && <span className="error"> ({s.problem})</span>}
+              </span>
+              <span className="row-end">
+                {recording === s.id ? (
+                  <span className="unassigned">Press the new shortcut... (Esc cancels)</span>
+                ) : (
+                  <Keys trigger={s.trigger} />
+                )}
+                {status?.editable && recording !== s.id && (
+                  <button
+                    className="btn small"
+                    onClick={() => {
+                      setMsg("");
+                      setRecording(s.id);
+                    }}
+                  >
+                    Change
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
-        <button className="btn" onClick={changeShortcuts}>
-          Change shortcuts...
-        </button>
+        {status && !status.editable && (
+          <button className="btn" onClick={changeShortcuts}>
+            Change shortcuts...
+          </button>
+        )}
         {msg && <p className="hint">{msg}</p>}
       </section>
 

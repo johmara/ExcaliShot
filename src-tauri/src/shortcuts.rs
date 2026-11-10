@@ -1,33 +1,43 @@
 //! Global shortcuts.
 //!
 //! Linux: the xdg-desktop-portal GlobalShortcuts interface (works on GNOME Wayland, KDE).
-//! GNOME owns the shortcut assignment UI; we propose defaults and can open its settings.
-//! macOS/Windows/X11-only: TODO(step 6b) tauri-plugin-global-shortcut backend + our own settings UI.
+//! The desktop owns the shortcut assignment UI; we propose defaults.
+//! macOS and Windows: `tauri-plugin-global-shortcut`, with the choices stored in
+//! `settings.json` and edited in our own settings window. (Compiled by CI, untested on
+//! real hardware so far.)
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
-use crate::flow::Mode;
+use crate::{flow::Mode, settings::Settings};
 
 pub const APP_ID: &str = "se.johmara.excalishot";
 
-/// id, description, XDG-style preferred trigger, capture mode.
+/// id, description, preferred trigger, capture mode.
 pub const DEFS: [(&str, &str, &str, Mode); 3] = [
     ("region", "Capture region", "CTRL+SHIFT+1", Mode::Region),
     ("monitor", "Capture current monitor", "CTRL+SHIFT+2", Mode::Monitor),
     ("full", "Capture all monitors", "CTRL+SHIFT+3", Mode::Full),
 ];
 
+fn err<E: std::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
 #[derive(Serialize, Clone)]
 pub struct ShortcutDto {
     id: String,
     description: String,
     trigger: String,
+    /// Set when the shortcut could not be registered (invalid, or already taken by another app).
+    problem: Option<String>,
 }
 
 #[derive(Serialize, Clone, Default)]
 pub struct ShortcutStatus {
     backend: String,
+    /// Whether the settings window may change the shortcuts (false when the desktop owns them).
+    editable: bool,
     error: Option<String>,
     shortcuts: Vec<ShortcutDto>,
 }
@@ -41,6 +51,25 @@ impl ShortcutStatus {
             .map(|s| s.trigger.clone())
             .filter(|t| !t.is_empty())
     }
+}
+
+/// Canonical spelling of an accelerator: "ctrl+shift+a" -> "Ctrl+Shift+A".
+pub fn normalize_accelerator(raw: &str) -> String {
+    raw.split('+')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(|p| match p.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => "Ctrl".to_string(),
+            "alt" | "option" => "Alt".to_string(),
+            "shift" => "Shift".to_string(),
+            "super" | "win" | "windows" | "meta" => "Super".to_string(),
+            "cmd" | "command" => "Cmd".to_string(),
+            "commandorcontrol" | "cmdorctrl" => "CommandOrControl".to_string(),
+            _ if p.chars().count() == 1 => p.to_uppercase(),
+            _ => p.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
 /// Normalise portal trigger descriptions ("Press <Shift><Control>1") to "Ctrl+Shift+1".
@@ -72,7 +101,7 @@ pub fn pretty_trigger(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::pretty_trigger;
+    use super::{normalize_accelerator, pretty_trigger};
 
     #[test]
     fn normalises_gnome_triggers() {
@@ -85,7 +114,18 @@ mod tests {
         assert_eq!(pretty_trigger("Ctrl+Shift+1"), "Ctrl+Shift+1");
         assert_eq!(pretty_trigger(""), "");
     }
+
+    #[test]
+    fn normalises_accelerators() {
+        assert_eq!(normalize_accelerator("CTRL+SHIFT+1"), "Ctrl+Shift+1");
+        assert_eq!(normalize_accelerator("ctrl + shift + a"), "Ctrl+Shift+A");
+        assert_eq!(normalize_accelerator("Control+Option+ArrowUp"), "Ctrl+Alt+ArrowUp");
+        assert_eq!(normalize_accelerator("command+Shift+4"), "Cmd+Shift+4");
+        assert_eq!(normalize_accelerator(""), "");
+    }
 }
+
+// ---- Linux: xdg-desktop-portal --------------------------------------------
 
 #[cfg(target_os = "linux")]
 mod portal {
@@ -97,10 +137,6 @@ mod portal {
         global_shortcuts::{GlobalShortcuts, NewShortcut},
     };
     use futures_util::StreamExt;
-
-    fn err<E: std::fmt::Display>(e: E) -> String {
-        e.to_string()
-    }
 
     pub struct Handle {
         gs: GlobalShortcuts,
@@ -141,6 +177,7 @@ mod portal {
                 id: s.id().to_owned(),
                 description: s.description().to_owned(),
                 trigger: pretty_trigger(s.trigger_description()),
+                problem: None,
             })
             .collect();
 
@@ -154,14 +191,9 @@ mod portal {
             }
         });
 
-        let state = app_state(&app);
+        let state = app.state::<PortalState>();
         *state.handle.lock().unwrap() = Some(Arc::new(Handle { gs, session }));
         Ok(dtos)
-    }
-
-    fn app_state(app: &AppHandle) -> tauri::State<'_, PortalState> {
-        use tauri::Manager as _;
-        app.state::<PortalState>()
     }
 
     pub async fn configure(state: State<'_, PortalState>) -> Result<(), String> {
@@ -178,26 +210,89 @@ pub use portal::PortalState;
 #[derive(Default)]
 pub struct PortalState;
 
+// ---- macOS / Windows: tauri-plugin-global-shortcut -------------------------
+
+#[cfg(not(target_os = "linux"))]
+mod native {
+    use super::*;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+    pub fn config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+        Ok(app.path().app_config_dir().map_err(err)?.join("settings.json"))
+    }
+
+    pub fn validate(accelerator: &str) -> Result<(), String> {
+        accelerator.parse::<Shortcut>().map(|_| ()).map_err(err)
+    }
+
+    /// (Re)register every configured shortcut. A shortcut that cannot be registered (invalid, or
+    /// already taken by another app) is reported on its entry instead of failing the others.
+    pub fn register_all(app: &AppHandle, cfg: &Settings) -> Vec<ShortcutDto> {
+        let gs = app.global_shortcut();
+        let _ = gs.unregister_all();
+        DEFS.iter()
+            .map(|(id, description, _, mode)| {
+                let trigger = cfg.shortcuts.get(*id).cloned().unwrap_or_default();
+                let mode = *mode;
+                let problem = match trigger.parse::<Shortcut>() {
+                    Err(e) => Some(format!("invalid shortcut: {e}")),
+                    Ok(shortcut) => gs
+                        .on_shortcut(shortcut, move |app, _shortcut, event| {
+                            if event.state() == ShortcutState::Pressed {
+                                crate::trigger(app, mode);
+                            }
+                        })
+                        .err()
+                        .map(|e| e.to_string()),
+                };
+                ShortcutDto { id: id.to_string(), description: description.to_string(), trigger, problem }
+            })
+            .collect()
+    }
+}
+
 #[derive(Default)]
 pub struct StatusState(pub std::sync::Mutex<ShortcutStatus>);
 
+/// Only read on macOS/Windows, where the app stores the shortcut choices itself.
+#[derive(Default)]
+#[cfg_attr(target_os = "linux", allow(dead_code))]
+pub struct SettingsState(pub std::sync::Mutex<Settings>);
+
 /// Called once at startup.
 pub async fn init(app: AppHandle) {
-    use tauri::Manager as _;
     let status = {
         #[cfg(target_os = "linux")]
         {
             match portal::init(app.clone()).await {
-                Ok(shortcuts) => ShortcutStatus { backend: "xdg-desktop-portal".into(), error: None, shortcuts },
-                Err(e) => ShortcutStatus { backend: "xdg-desktop-portal".into(), error: Some(e), shortcuts: vec![] },
+                Ok(shortcuts) => ShortcutStatus {
+                    backend: "xdg-desktop-portal".into(),
+                    editable: false,
+                    error: None,
+                    shortcuts,
+                },
+                Err(e) => ShortcutStatus {
+                    backend: "xdg-desktop-portal".into(),
+                    editable: false,
+                    error: Some(e),
+                    shortcuts: vec![],
+                },
             }
         }
         #[cfg(not(target_os = "linux"))]
         {
+            let cfg = native::config_path(&app).map(|p| Settings::load(&p)).unwrap_or_default();
+            let shortcuts = native::register_all(&app, &cfg);
+            *app.state::<SettingsState>().0.lock().unwrap() = cfg;
+            let problems: Vec<String> = shortcuts
+                .iter()
+                .filter_map(|s| s.problem.as_ref().map(|p| format!("{}: {p}", s.description)))
+                .collect();
             ShortcutStatus {
-                backend: "none".into(),
-                error: Some("global shortcuts are not implemented on this platform yet".into()),
-                shortcuts: vec![],
+                backend: "global-shortcut".into(),
+                editable: true,
+                error: (!problems.is_empty()).then(|| problems.join("; ")),
+                shortcuts,
             }
         }
     };
@@ -213,7 +308,7 @@ pub fn shortcut_status(state: State<'_, StatusState>) -> ShortcutStatus {
     state.0.lock().unwrap().clone()
 }
 
-/// Open the desktop's own shortcut configuration (GNOME/KDE) for this app.
+/// Open the desktop's own shortcut configuration (GNOME/KDE) for this app. Linux only.
 #[tauri::command]
 pub async fn configure_shortcuts(#[allow(unused)] state: State<'_, PortalState>) -> Result<(), String> {
     #[cfg(target_os = "linux")]
@@ -223,5 +318,52 @@ pub async fn configure_shortcuts(#[allow(unused)] state: State<'_, PortalState>)
     #[cfg(not(target_os = "linux"))]
     {
         Err("not supported on this platform".into())
+    }
+}
+
+/// Change one shortcut (macOS and Windows). `accelerator` looks like "Ctrl+Shift+1".
+#[tauri::command]
+pub fn set_shortcut(
+    app: AppHandle,
+    status: State<'_, StatusState>,
+    settings: State<'_, SettingsState>,
+    id: String,
+    accelerator: String,
+) -> Result<ShortcutStatus, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = (&app, &status, &settings, &id, &accelerator);
+        Err("On Linux the desktop manages the shortcuts.".into())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        if !DEFS.iter().any(|d| d.0 == id) {
+            return Err("unknown shortcut".into());
+        }
+        let accelerator = normalize_accelerator(&accelerator);
+        native::validate(&accelerator)?;
+
+        let shortcuts = {
+            let mut cfg = settings.0.lock().unwrap();
+            if cfg.shortcuts.iter().any(|(k, v)| *k != id && v.eq_ignore_ascii_case(&accelerator)) {
+                return Err("That shortcut is already used by another ExcaliShot action.".into());
+            }
+            cfg.shortcuts.insert(id, accelerator);
+            cfg.save(&native::config_path(&app)?)?;
+            native::register_all(&app, &cfg)
+        };
+        let problems: Vec<String> = shortcuts
+            .iter()
+            .filter_map(|s| s.problem.as_ref().map(|p| format!("{}: {p}", s.description)))
+            .collect();
+        let new_status = ShortcutStatus {
+            backend: "global-shortcut".into(),
+            editable: true,
+            error: (!problems.is_empty()).then(|| problems.join("; ")),
+            shortcuts,
+        };
+        *status.0.lock().unwrap() = new_status.clone();
+        crate::refresh_tray(&app);
+        Ok(new_status)
     }
 }
