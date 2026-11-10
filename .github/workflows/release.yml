@@ -131,7 +131,7 @@ jobs:
 
       - name: Package and publish
         if: github.event_name != 'pull_request'
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Signs the update artifacts. The matching public key is in tauri.conf.json.
