@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import "./assetPath"; // must stay above the Excalidraw import
 import { Excalidraw, convertToExcalidrawElements, exportToBlob } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 
@@ -22,6 +23,59 @@ export default function Editor() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [initial, setInitial] = useState<any>(null);
   const [msg, setMsg] = useState("");
+  const [apiReady, setApiReady] = useState(false);
+  /** Zoom value of the last automatic fit; if the user has zoomed away from it we stop re-fitting. */
+  const lastFitZoom = useRef(1);
+
+  /** Zoom out so the whole screenshot is visible (never zooms in past 100%). */
+  const fit = useCallback(() => {
+    const api = apiRef.current;
+    if (!api) return false;
+    const elements = api.getSceneElements();
+    if (!elements.length) return false;
+    api.scrollToContent(elements, { fitToContent: true, viewportZoomFactor: 0.9, animate: false });
+    setTimeout(() => {
+      lastFitZoom.current = api.getAppState().zoom.value;
+    }, 100);
+    return true;
+  }, []);
+
+  // Fit once the scene has its elements, then again shortly after: the first pass can run before
+  // the canvas has its final size.
+  useEffect(() => {
+    if (!apiReady) return;
+    let tries = 0;
+    const timers: number[] = [];
+    const poll = window.setInterval(() => {
+      if (fit()) {
+        clearInterval(poll);
+        timers.push(window.setTimeout(fit, 250), window.setTimeout(fit, 700));
+      } else if (++tries > 40) {
+        clearInterval(poll);
+      }
+    }, 50);
+    return () => {
+      clearInterval(poll);
+      timers.forEach(clearTimeout);
+    };
+  }, [apiReady, fit]);
+
+  // Keep the whole image visible when the window is resized, unless the user zoomed on purpose.
+  useEffect(() => {
+    let t: number | undefined;
+    const onResize = () => {
+      clearTimeout(t);
+      t = window.setTimeout(() => {
+        const api = apiRef.current;
+        if (api && Math.abs(api.getAppState().zoom.value - lastFitZoom.current) < 1e-3) fit();
+      }, 120);
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      clearTimeout(t);
+    };
+  }, [fit]);
 
   useEffect(() => {
     (async () => {
@@ -37,7 +91,6 @@ export default function Editor() {
         elements,
         files: { [FILE_ID]: { id: FILE_ID, mimeType: "image/png", dataURL, created: Date.now() } },
         appState: { viewBackgroundColor: "#ffffff" },
-        scrollToContent: true,
       });
     })().catch((e) => setMsg(`load failed: ${e}`));
   }, []);
@@ -105,7 +158,10 @@ export default function Editor() {
         {initial && (
           <Excalidraw
             initialData={initial}
-            excalidrawAPI={(api) => (apiRef.current = api)}
+            excalidrawAPI={(api) => {
+              apiRef.current = api;
+              setApiReady(true);
+            }}
             UIOptions={{
               canvasActions: { export: false, loadScene: false, saveToActiveFile: false, saveAsImage: false },
             }}

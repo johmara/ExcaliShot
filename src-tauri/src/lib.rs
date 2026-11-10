@@ -124,6 +124,9 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Hidden overlay windows, ready before the first capture.
+            flow::preload_overlays(app.handle());
+
             // Bind global shortcuts last: the tray labels are refreshed when binding finishes.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move { shortcuts::init(handle).await });
@@ -149,7 +152,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             flow::start_capture,
+            flow::overlay_mode,
             flow::overlay_slice,
+            flow::overlay_ready,
             flow::overlay_pick,
             flow::overlay_select,
             flow::cancel_capture,

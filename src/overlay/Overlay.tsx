@@ -1,31 +1,74 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 type Drag = { x0: number; y0: number; x1: number; y1: number } | null;
 
-/** Frozen picture of one monitor. Region mode: drag to select. Monitor mode: first pointer event picks it. */
-export default function Overlay({ index, mode }: { index: number; mode: string }) {
+/**
+ * One per monitor, created hidden at startup. When a capture starts Rust sends `overlay-arm`;
+ * we fetch our frozen slice, wait until it is decoded, then call `overlay_ready` so the window
+ * is only shown with its image already on screen. `overlay-reset` clears it again.
+ *
+ * Region mode: drag to select. Monitor mode: the first pointer event picks this monitor.
+ */
+export default function Overlay({ index }: { index: number }) {
+  const [mode, setMode] = useState<string | null>(null);
   const [src, setSrc] = useState<string>();
   const [drag, setDrag] = useState<Drag>(null);
-  const done = useRef(false);
+  const picked = useRef(false);
+  const urlRef = useRef<string>();
 
   useEffect(() => {
-    let url: string | undefined;
-    invoke<ArrayBuffer>("overlay_slice", { index }).then((b) => {
-      url = URL.createObjectURL(new Blob([b], { type: "image/png" }));
-      setSrc(url);
-    });
+    // The page background must never flash white while the window appears.
+    document.documentElement.style.background = "#000";
+    document.body.style.background = "#000";
+
+    const reset = () => {
+      picked.current = false;
+      setDrag(null);
+      setSrc(undefined);
+      setMode(null);
+      if (urlRef.current) {
+        URL.revokeObjectURL(urlRef.current);
+        urlRef.current = undefined;
+      }
+    };
+
+    const arm = async () => {
+      try {
+        const m = await invoke<string | null>("overlay_mode");
+        if (!m) return;
+        reset();
+        const bytes = await invoke<ArrayBuffer>("overlay_slice", { index });
+        const url = URL.createObjectURL(new Blob([bytes], { type: "image/png" }));
+        urlRef.current = url;
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        setMode(m);
+        setSrc(url);
+        // rAF does not run while the window is hidden, so give React a moment to commit the image.
+        await new Promise((r) => setTimeout(r, 40));
+        await invoke("overlay_ready", { index });
+      } catch (e) {
+        console.error("overlay arm failed", e);
+      }
+    };
+
     const key = (e: KeyboardEvent) => e.key === "Escape" && invoke("cancel_capture");
     window.addEventListener("keydown", key);
+    const unlisten = Promise.all([listen("overlay-arm", arm), listen("overlay-reset", reset)]);
+    arm(); // covers a window that was created after the capture started
+
     return () => {
       window.removeEventListener("keydown", key);
-      if (url) URL.revokeObjectURL(url);
+      unlisten.then((fns) => fns.forEach((f) => f()));
     };
   }, [index]);
 
   const pick = () => {
-    if (mode === "monitor" && !done.current) {
-      done.current = true;
+    if (mode === "monitor" && !picked.current) {
+      picked.current = true;
       invoke("overlay_pick", { index });
     }
   };
@@ -59,7 +102,10 @@ export default function Overlay({ index, mode }: { index: number; mode: string }
           index, x: drag.x0, y: drag.y0, w, h, ow: window.innerWidth, oh: window.innerHeight,
         });
       }}
-      style={{ position: "fixed", inset: 0, cursor: mode === "region" ? "crosshair" : "default", userSelect: "none", overflow: "hidden" }}
+      style={{
+        position: "fixed", inset: 0, background: "#000",
+        cursor: mode === "region" ? "crosshair" : "default", userSelect: "none", overflow: "hidden",
+      }}
     >
       {src && <img src={src} draggable={false} style={{ width: "100vw", height: "100vh", display: "block" }} />}
       {mode === "region" && (

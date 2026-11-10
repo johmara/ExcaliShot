@@ -1,10 +1,14 @@
 //! Capture flow: trigger -> grab desktop -> (overlays) -> editor -> copy/save.
+//!
+//! The per-monitor overlay windows are created once, hidden, at startup. A capture only
+//! arms them: each one fetches its frozen slice, renders it, and asks to be shown
+//! (`overlay_ready`). Nothing is ever shown blank.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use image::DynamicImage;
 use tauri::{
-    AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
     ipc::{InvokeBody, Request, Response},
 };
 
@@ -50,13 +54,25 @@ struct Session {
     mode: Mode,
 }
 
+impl Session {
+    /// Rectangle of monitor `index` in the pixels of the desktop image.
+    fn monitor_rect(&self, index: usize) -> Result<Rect, String> {
+        let m = *self.monitors.get(index).ok_or("bad monitor index")?;
+        Ok(monitors::monitor_in_image(m, self.bbox, self.desktop.width(), self.desktop.height()))
+    }
+}
+
 #[derive(Default)]
 pub struct AppState {
-    session: Mutex<Option<Session>>,
+    session: Mutex<Option<Arc<Session>>>,
     /// The PNG the editor is annotating.
     result: Mutex<Option<Vec<u8>>>,
     /// Long-lived so clipboard ownership survives the editor window closing.
     clipboard: Mutex<Option<arboard::Clipboard>>,
+}
+
+fn active_session(state: &State<'_, AppState>) -> Result<Arc<Session>, String> {
+    state.session.lock().unwrap().clone().ok_or_else(|| "no active capture".to_string())
 }
 
 fn close_windows(app: &AppHandle, prefix: &str) {
@@ -67,9 +83,59 @@ fn close_windows(app: &AppHandle, prefix: &str) {
     }
 }
 
+/// Hide (do not destroy) the overlays and tell them to drop their image.
+fn hide_overlays(app: &AppHandle) {
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("ov") {
+            let _ = win.hide();
+        }
+    }
+    let _ = app.emit("overlay-reset", ());
+}
+
+/// Make sure there is exactly one hidden overlay window per monitor.
+pub fn ensure_overlays(app: &AppHandle, count: usize) -> Result<(), String> {
+    let existing: Vec<String> = app
+        .webview_windows()
+        .into_keys()
+        .filter(|l| l.starts_with("ov"))
+        .collect();
+    let complete = existing.len() == count && (0..count).all(|i| existing.contains(&format!("ov{i}")));
+    if complete {
+        return Ok(());
+    }
+    close_windows(app, "ov");
+    for i in 0..count {
+        WebviewWindowBuilder::new(
+            app,
+            format!("ov{i}"),
+            WebviewUrl::App(format!("index.html?overlay={i}").into()),
+        )
+        .decorations(false)
+        .always_on_top(true)
+        .visible(false)
+        .focused(false)
+        .build()
+        .map_err(err)?;
+    }
+    Ok(())
+}
+
+/// Called at startup so the first capture is as fast as every later one.
+pub fn preload_overlays(app: &AppHandle) {
+    match app.available_monitors() {
+        Ok(m) => {
+            if let Err(e) = ensure_overlays(app, m.len()) {
+                eprintln!("could not preload overlays: {e}");
+            }
+        }
+        Err(e) => eprintln!("could not list monitors: {e}"),
+    }
+}
+
 /// Entry point for every trigger (tray, shortcut, CLI, launcher button).
 pub async fn start(app: AppHandle, mode: Mode) -> Result<(), String> {
-    close_windows(&app, "ov");
+    hide_overlays(&app);
     close_windows(&app, "editor");
 
     let desktop = capture::grab_desktop().await?;
@@ -93,47 +159,10 @@ pub async fn start(app: AppHandle, mode: Mode) -> Result<(), String> {
         return open_editor(&app, desktop.width(), desktop.height());
     }
 
-    *state.session.lock().unwrap() = Some(Session { desktop, monitors: mons.clone(), bbox, mode });
-    open_overlays(&app, &mons, mode)
-}
-
-fn open_overlays(app: &AppHandle, mons: &[Rect], mode: Mode) -> Result<(), String> {
-    for (i, m) in mons.iter().enumerate() {
-        let win = WebviewWindowBuilder::new(
-            app,
-            format!("ov{i}"),
-            WebviewUrl::App(format!("index.html?overlay={i}&mode={}", mode.as_str()).into()),
-        )
-        .decorations(false)
-        .always_on_top(true)
-        .focused(true)
-        .build()
-        .map_err(err)?;
-
-        #[cfg(target_os = "linux")]
-        {
-            // Wayland ignores client-side positioning; ask GTK to fullscreen on monitor `i`.
-            let _ = m;
-            let w = win.clone();
-            app.run_on_main_thread(move || {
-                use gtk::prelude::*;
-                if let Ok(gw) = w.gtk_window() {
-                    if let Some(screen) = GtkWindowExt::screen(&gw) {
-                        gw.fullscreen_on_monitor(&screen, i as i32);
-                    }
-                }
-            })
-            .map_err(err)?;
-        }
-        // TODO(step 8): verify on macOS/Windows.
-        #[cfg(not(target_os = "linux"))]
-        {
-            let _ = win.set_position(tauri::PhysicalPosition::new(m.x, m.y));
-            let _ = win.set_size(tauri::PhysicalSize::new(m.w, m.h));
-            let _ = win.set_fullscreen(true);
-        }
-    }
-    Ok(())
+    let count = mons.len();
+    *state.session.lock().unwrap() = Some(Arc::new(Session { desktop, monitors: mons, bbox, mode }));
+    ensure_overlays(&app, count)?; // normally a no-op; recreates them if the monitor setup changed
+    app.emit("overlay-arm", ()).map_err(err)
 }
 
 fn open_editor(app: &AppHandle, img_w: u32, img_h: u32) -> Result<(), String> {
@@ -156,16 +185,12 @@ fn open_editor(app: &AppHandle, img_w: u32, img_h: u32) -> Result<(), String> {
     Ok(())
 }
 
-/// Crop `rect` (desktop-image pixels) out of the session, close overlays, open the editor.
+/// Crop `rect` (desktop-image pixels) out of the session, hide overlays, open the editor.
 fn finish(app: &AppHandle, rect: Rect) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let png = {
-        let guard = state.session.lock().unwrap();
-        let s = guard.as_ref().ok_or("no active capture")?;
-        capture::crop_png(&s.desktop, rect, false)?
-    };
-    *state.session.lock().unwrap() = None;
-    close_windows(app, "ov");
+    let session = state.session.lock().unwrap().take().ok_or("no active capture")?;
+    let png = capture::crop_png(&session.desktop, rect, false)?;
+    hide_overlays(app);
     *state.result.lock().unwrap() = Some(png);
     open_editor(app, rect.w, rect.h)
 }
@@ -177,29 +202,67 @@ pub async fn start_capture(app: AppHandle, mode: String) -> Result<(), String> {
     start(app, Mode::parse(&mode).ok_or("unknown mode")?).await
 }
 
-/// The frozen picture of one monitor, shown by that monitor's overlay.
+/// Which mode the overlays are armed for, or `None` when no capture is active.
 #[tauri::command]
-pub fn overlay_slice(state: State<'_, AppState>, index: usize) -> Result<Response, String> {
-    let guard = state.session.lock().unwrap();
-    let s = guard.as_ref().ok_or("no active capture")?;
-    let m = *s.monitors.get(index).ok_or("bad monitor index")?;
-    let r = monitors::monitor_in_image(m, s.bbox, s.desktop.width(), s.desktop.height());
+pub fn overlay_mode(state: State<'_, AppState>) -> Option<String> {
+    state.session.lock().unwrap().as_ref().map(|s| s.mode.as_str().to_string())
+}
+
+/// The frozen picture of one monitor. Async so the overlays prepare in parallel instead of
+/// queueing on the main thread.
+#[tauri::command]
+pub async fn overlay_slice(state: State<'_, AppState>, index: usize) -> Result<Response, String> {
+    let s = active_session(&state)?;
+    let r = s.monitor_rect(index)?;
     Ok(Response::new(capture::crop_png(&s.desktop, r, true)?))
+}
+
+/// The overlay has rendered its image: put it fullscreen on its monitor and show it.
+#[tauri::command]
+pub fn overlay_ready(app: AppHandle, state: State<'_, AppState>, index: usize) -> Result<(), String> {
+    let Ok(session) = active_session(&state) else {
+        return Ok(()); // cancelled while the overlay was preparing
+    };
+    let win = app.get_webview_window(&format!("ov{index}")).ok_or("overlay window missing")?;
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = &session;
+        // Wayland ignores client-side positioning; ask GTK to fullscreen on monitor `index`.
+        let w = win.clone();
+        app.run_on_main_thread(move || {
+            use gtk::prelude::*;
+            if let Ok(gw) = w.gtk_window() {
+                if let Some(screen) = GtkWindowExt::screen(&gw) {
+                    gw.fullscreen_on_monitor(&screen, index as i32);
+                }
+            }
+        })
+        .map_err(err)?;
+    }
+    // TODO(cross-platform step): verify on macOS/Windows.
+    #[cfg(not(target_os = "linux"))]
+    {
+        if let Some(m) = session.monitors.get(index) {
+            let _ = win.set_position(tauri::PhysicalPosition::new(m.x, m.y));
+            let _ = win.set_size(tauri::PhysicalSize::new(m.w, m.h));
+        }
+        let _ = win.set_fullscreen(true);
+    }
+
+    win.show().map_err(err)?;
+    let _ = win.set_focus();
+    Ok(())
 }
 
 /// Monitor mode: the overlay that first sees the pointer is the monitor to capture.
 #[tauri::command]
 pub fn overlay_pick(app: AppHandle, state: State<'_, AppState>, index: usize) -> Result<(), String> {
-    let rect = {
-        let guard = state.session.lock().unwrap();
-        let s = guard.as_ref().ok_or("no active capture")?;
-        if s.mode != Mode::Monitor {
-            return Ok(());
-        }
-        let m = *s.monitors.get(index).ok_or("bad monitor index")?;
-        monitors::monitor_in_image(m, s.bbox, s.desktop.width(), s.desktop.height())
-    };
-    finish(&app, rect)
+    let s = active_session(&state)?;
+    if s.mode != Mode::Monitor {
+        return Ok(());
+    }
+    finish(&app, s.monitor_rect(index)?)
 }
 
 /// Region mode: selection in the overlay's CSS pixels (signed w/h allowed).
@@ -215,14 +278,9 @@ pub fn overlay_select(
     ow: f64,
     oh: f64,
 ) -> Result<(), String> {
-    let rect = {
-        let guard = state.session.lock().unwrap();
-        let s = guard.as_ref().ok_or("no active capture")?;
-        let m = *s.monitors.get(index).ok_or("bad monitor index")?;
-        let mon = monitors::monitor_in_image(m, s.bbox, s.desktop.width(), s.desktop.height());
-        monitors::selection_in_image(mon, ow, oh, (x, y, w, h))
-    };
-    match rect {
+    let s = active_session(&state)?;
+    let mon = s.monitor_rect(index)?;
+    match monitors::selection_in_image(mon, ow, oh, (x, y, w, h)) {
         Some(r) => finish(&app, r),
         None => Ok(()), // empty selection: keep waiting
     }
@@ -231,7 +289,7 @@ pub fn overlay_select(
 #[tauri::command]
 pub fn cancel_capture(app: AppHandle, state: State<'_, AppState>) {
     *state.session.lock().unwrap() = None;
-    close_windows(&app, "ov");
+    hide_overlays(&app);
 }
 
 #[tauri::command]
@@ -274,7 +332,7 @@ pub fn copy_png(app: AppHandle, state: State<'_, AppState>, request: Request<'_>
 #[tauri::command]
 pub fn save_png(app: AppHandle, request: Request<'_>) -> Result<String, String> {
     let bytes = body_bytes(&request)?;
-    let dir = app.path().picture_dir().map_err(err)?.join("Screenshots"); // TODO: configurable (step 6)
+    let dir = app.path().picture_dir().map_err(err)?.join("Screenshots"); // TODO: configurable
     std::fs::create_dir_all(&dir).map_err(err)?;
     let stamp = chrono::Local::now().format("Screenshot_%Y-%m-%d_%H-%M-%S");
     let mut path = dir.join(format!("{stamp}.png"));

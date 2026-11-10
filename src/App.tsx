@@ -6,7 +6,7 @@ import Settings from "./settings/Settings";
 function App() {
   const q = new URLSearchParams(window.location.search);
   const overlay = q.get("overlay");
-  if (overlay !== null) return <Overlay index={Number(overlay)} mode={q.get("mode") ?? "region"} />;
+  if (overlay !== null) return <Overlay index={Number(overlay)} />;
   if (q.get("editor")) return <Editor />;
   return <Settings />;
 }

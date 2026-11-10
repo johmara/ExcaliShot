@@ -108,11 +108,14 @@ The design document in [`docs/superpowers/specs/`](docs/superpowers/specs/2026-1
 
 ## Roadmap
 
-- macOS and Windows capture (`xcap`) and shortcuts (`tauri-plugin-global-shortcut`), with a shortcut editor in the settings window.
-- Preload the overlay windows to remove the short delay before region selection.
-- Offline Excalidraw fonts in the editor.
-- Packaging and a CI build matrix for Linux, macOS and Windows.
-- Option to annotate directly on the frozen screen, as Flameshot does.
+In priority order:
+
+1. Faster region select: overlay windows are preloaded hidden, so a capture starts immediately (in testing).
+2. Offline Excalidraw fonts in the editor.
+3. macOS and Windows capture (`xcap`) and shortcuts (`tauri-plugin-global-shortcut`), with a shortcut editor in the settings window, plus a CI build matrix for Linux, macOS and Windows.
+4. Packaging: `.deb`, AppImage, `.dmg` and `.msi`.
+
+Later: an option to annotate directly on the frozen screen, as Flameshot does.
 
 ## License
 
