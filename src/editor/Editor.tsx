@@ -3,17 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import "./assetPath"; // must stay above the Excalidraw import
 import { Excalidraw, convertToExcalidrawElements, exportToBlob } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
+import { toDataURL, useCopySaveKeys } from "./shared";
 
 const FILE_ID = "screenshot";
-
-function toDataURL(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result as string);
-    r.onerror = reject;
-    r.readAsDataURL(blob);
-  });
-}
 
 /** Excalidraw canvas with the capture as a locked background image, plus Copy / Save. */
 export default function Editor() {
@@ -120,28 +112,7 @@ export default function Editor() {
     [exportPng],
   );
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      const api = apiRef.current;
-      if (!mod || !api) return;
-      const t = e.target as HTMLElement;
-      const typing = t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable;
-      if (e.key === "s") {
-        e.preventDefault();
-        run("save_png");
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        run("copy_png");
-      } else if (e.key === "c" && !typing && Object.keys(api.getAppState().selectedElementIds).length === 0) {
-        // Ctrl+C with nothing selected means "copy the screenshot".
-        e.preventDefault();
-        run("copy_png");
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [run]);
+  useCopySaveKeys(apiRef, run);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", fontFamily: "sans-serif" }}>
@@ -158,6 +129,7 @@ export default function Editor() {
         {initial && (
           <Excalidraw
             initialData={initial}
+            autoFocus // otherwise the keyboard shortcuts only work after clicking a tool
             excalidrawAPI={(api) => {
               apiRef.current = api;
               setApiReady(true);

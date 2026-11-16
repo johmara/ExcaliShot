@@ -85,6 +85,22 @@ pub fn selection_in_image(
     (w > 0 && h > 0).then_some(Rect { x: left, y: top, w, h })
 }
 
+/// Like `selection_in_image`, but relative to the monitor's own slice (its top-left is 0,0),
+/// which is the coordinate system of the frozen picture an overlay shows.
+pub fn selection_in_slice(
+    monitor_in_img: Rect,
+    overlay_w: f64,
+    overlay_h: f64,
+    sel: (f64, f64, f64, f64),
+) -> Option<Rect> {
+    selection_in_image(monitor_in_img, overlay_w, overlay_h, sel).map(|r| Rect {
+        x: r.x - monitor_in_img.x,
+        y: r.y - monitor_in_img.y,
+        w: r.w,
+        h: r.h,
+    })
+}
+
 fn clamp_rect(l: f64, t: f64, r: f64, b: f64, max_w: u32, max_h: u32) -> Rect {
     let l = l.clamp(0.0, max_w as f64);
     let t = t.clamp(0.0, max_h as f64);
@@ -177,5 +193,22 @@ mod tests {
         let m = r(0, 0, 100, 100);
         assert_eq!(selection_in_image(m, 100.0, 100.0, (10.0, 10.0, 0.0, 5.0)), None);
         assert_eq!(selection_in_image(m, 0.0, 100.0, (0.0, 0.0, 5.0, 5.0)), None);
+    }
+
+    #[test]
+    fn slice_selection_is_relative_to_the_monitor() {
+        let m = r(2400, 366, 1920, 1080);
+        let s = selection_in_slice(m, 1920.0, 1080.0, (100.0, 50.0, 300.0, 200.0)).unwrap();
+        assert_eq!(s, r(100, 50, 300, 200));
+    }
+
+    #[test]
+    fn slice_selection_fractional_scale_second_monitor() {
+        // 1.5x monitor that is second in the image (a negative desktop origin is already
+        // resolved by `monitor_in_image`): 1280x720 CSS px overlay over a 1920x1080 slice.
+        let m = r(1920, 0, 1920, 1080);
+        let s = selection_in_slice(m, 1280.0, 720.0, (100.0, 100.0, 200.0, 100.0)).unwrap();
+        assert_eq!(s, r(150, 150, 300, 150));
+        assert_eq!(selection_in_slice(m, 1280.0, 720.0, (5.0, 5.0, 0.0, 9.0)), None);
     }
 }

@@ -73,6 +73,22 @@ fn autostart_set(app: AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn annotate_get(state: tauri::State<'_, shortcuts::SettingsState>) -> bool {
+    state.0.lock().unwrap().annotate_on_screen
+}
+
+#[tauri::command]
+fn annotate_set(
+    app: AppHandle,
+    state: tauri::State<'_, shortcuts::SettingsState>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut cfg = state.0.lock().unwrap();
+    cfg.annotate_on_screen = enabled;
+    cfg.save(&settings::config_path(&app)?)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
@@ -98,6 +114,10 @@ pub fn run() {
         .manage(shortcuts::SettingsState::default())
         .manage(updater::UpdateState::default())
         .setup(|app| {
+            // Settings first: the capture flow and the shortcut binding both read them.
+            let cfg = settings::config_path(app.handle()).map(|p| settings::Settings::load(&p)).unwrap_or_default();
+            *app.state::<shortcuts::SettingsState>().0.lock().unwrap() = cfg;
+
             let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
             let region = MenuItem::with_id(app, "region", "Capture region", true, None::<&str>)?;
             let monitor = MenuItem::with_id(app, "monitor", "Capture current monitor", true, None::<&str>)?;
@@ -207,6 +227,8 @@ pub fn run() {
             shortcuts::set_shortcut,
             autostart_get,
             autostart_set,
+            annotate_get,
+            annotate_set,
             updater::update_status,
             updater::check_for_update,
             updater::install_update,

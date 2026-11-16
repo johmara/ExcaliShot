@@ -1,10 +1,11 @@
-//! Persisted user settings (currently the shortcut choices on platforms where the app owns
-//! the shortcuts: macOS and Windows). Plain JSON in the app config directory.
-#![cfg_attr(target_os = "linux", allow(dead_code))]
+//! Persisted user settings: the shortcut choices (only used on platforms where the app owns the
+//! shortcuts, macOS and Windows) and the annotate-on-screen option. Plain JSON in the app config
+//! directory.
 
 use std::{collections::BTreeMap, path::Path};
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 use crate::shortcuts::{DEFS, normalize_accelerator};
 
@@ -13,6 +14,14 @@ pub struct Settings {
     /// Shortcut id ("region", "monitor", "full") to accelerator ("Ctrl+Shift+1").
     #[serde(default)]
     pub shortcuts: BTreeMap<String, String>,
+    /// Annotate directly on the frozen screen after a region selection (Flameshot style).
+    #[serde(default)]
+    pub annotate_on_screen: bool,
+}
+
+/// Where `settings.json` lives.
+pub fn config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json"))
 }
 
 impl Default for Settings {
@@ -22,6 +31,7 @@ impl Default for Settings {
                 .iter()
                 .map(|(id, _, trigger, _)| (id.to_string(), normalize_accelerator(trigger)))
                 .collect(),
+            annotate_on_screen: false,
         }
     }
 }
@@ -76,6 +86,15 @@ mod tests {
     }
 
     #[test]
+    fn annotate_defaults_to_off_and_old_files_still_load() {
+        let path = temp_file("old-format");
+        std::fs::write(&path, r#"{"shortcuts":{"region":"Alt+R"}}"#).unwrap();
+        let s = Settings::load(&path);
+        std::fs::remove_file(&path).ok();
+        assert!(!s.annotate_on_screen);
+    }
+
+    #[test]
     fn corrupt_file_gives_defaults() {
         let path = temp_file("corrupt");
         std::fs::write(&path, "not json").unwrap();
@@ -89,6 +108,7 @@ mod tests {
         let path = temp_file("roundtrip");
         let mut s = Settings::default();
         s.shortcuts.insert("full".into(), "Ctrl+Alt+F".into());
+        s.annotate_on_screen = true;
         s.save(&path).unwrap();
         let back = Settings::load(&path);
         std::fs::remove_file(&path).ok();

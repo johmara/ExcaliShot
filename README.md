@@ -71,6 +71,10 @@ Default shortcuts, which your desktop may change:
 
 In the editor: `Ctrl+Enter` (or `Ctrl+C` with nothing selected) copies, `Ctrl+S` saves, `Esc` cancels a region selection.
 
+### Annotate on the frozen screen
+
+By default a region capture opens in the editor window. Turn on **Annotate on the frozen screen after selecting a region** in the settings window to work Flameshot-style instead: after you drag a region, the Excalidraw tools appear right on the frozen screen, with everything outside your selection dimmed. `Ctrl+Enter` copies and `Ctrl+S` saves just the selection, and `Esc` cancels the capture (except while you are typing text, drawing a shape, or have a menu open, where it closes that first). Monitor and all-monitor captures still open the editor.
+
 ### Changing the shortcuts
 
 - **macOS and Windows:** open **Settings...** from the tray, click **Change** next to an action, and press the new combination.
