@@ -220,10 +220,6 @@ mod native {
     use super::*;
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-    pub fn config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-        Ok(app.path().app_config_dir().map_err(err)?.join("settings.json"))
-    }
-
     pub fn validate(accelerator: &str) -> Result<(), String> {
         accelerator.parse::<Shortcut>().map(|_| ()).map_err(err)
     }
@@ -257,9 +253,8 @@ mod native {
 #[derive(Default)]
 pub struct StatusState(pub std::sync::Mutex<ShortcutStatus>);
 
-/// Only read on macOS/Windows, where the app stores the shortcut choices itself.
+/// The loaded settings. The shortcut choices in it are only used on macOS/Windows.
 #[derive(Default)]
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub struct SettingsState(pub std::sync::Mutex<Settings>);
 
 /// Called once at startup.
@@ -284,9 +279,8 @@ pub async fn init(app: AppHandle) {
         }
         #[cfg(not(target_os = "linux"))]
         {
-            let cfg = native::config_path(&app).map(|p| Settings::load(&p)).unwrap_or_default();
+            let cfg = app.state::<SettingsState>().0.lock().unwrap().clone();
             let shortcuts = native::register_all(&app, &cfg);
-            *app.state::<SettingsState>().0.lock().unwrap() = cfg;
             let problems: Vec<String> = shortcuts
                 .iter()
                 .filter_map(|s| s.problem.as_ref().map(|p| format!("{}: {p}", s.description)))
@@ -352,7 +346,7 @@ pub fn set_shortcut(
                 return Err("That shortcut is already used by another ExcaliShot action.".into());
             }
             cfg.shortcuts.insert(id, accelerator);
-            cfg.save(&native::config_path(&app)?)?;
+            cfg.save(&crate::settings::config_path(&app)?)?;
             native::register_all(&app, &cfg)
         };
         let problems: Vec<String> = shortcuts

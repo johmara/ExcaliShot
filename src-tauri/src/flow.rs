@@ -46,12 +46,33 @@ impl Mode {
     }
 }
 
+/// What an overlay needs to know about the running capture.
+#[derive(serde::Serialize)]
+pub struct OverlayMode {
+    mode: &'static str,
+    /// Region mode only: annotate on the frozen screen after selecting, instead of opening the editor.
+    annotate: bool,
+}
+
+/// A selection in the pixels of one monitor's frozen slice.
+#[derive(serde::Serialize)]
+pub struct SliceSelection {
+    x: i32,
+    y: i32,
+    w: u32,
+    h: u32,
+    /// Pixel size of the slice itself.
+    slice_w: u32,
+    slice_h: u32,
+}
+
 struct Session {
     desktop: DynamicImage,
     /// Monitor rectangles in Tauri coordinates, same order as the overlay indices.
     monitors: Vec<Rect>,
     bbox: Rect,
     mode: Mode,
+    annotate: bool,
 }
 
 impl Session {
@@ -160,7 +181,9 @@ pub async fn start(app: AppHandle, mode: Mode) -> Result<(), String> {
     }
 
     let count = mons.len();
-    *state.session.lock().unwrap() = Some(Arc::new(Session { desktop, monitors: mons, bbox, mode }));
+    let annotate = mode == Mode::Region
+        && app.state::<crate::shortcuts::SettingsState>().0.lock().unwrap().annotate_on_screen;
+    *state.session.lock().unwrap() = Some(Arc::new(Session { desktop, monitors: mons, bbox, mode, annotate }));
     ensure_overlays(&app, count)?; // normally a no-op; recreates them if the monitor setup changed
     app.emit("overlay-arm", ()).map_err(err)
 }
@@ -204,8 +227,13 @@ pub async fn start_capture(app: AppHandle, mode: String) -> Result<(), String> {
 
 /// Which mode the overlays are armed for, or `None` when no capture is active.
 #[tauri::command]
-pub fn overlay_mode(state: State<'_, AppState>) -> Option<String> {
-    state.session.lock().unwrap().as_ref().map(|s| s.mode.as_str().to_string())
+pub fn overlay_mode(state: State<'_, AppState>) -> Option<OverlayMode> {
+    state
+        .session
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| OverlayMode { mode: s.mode.as_str(), annotate: s.annotate })
 }
 
 /// The frozen picture of one monitor. Async so the overlays prepare in parallel instead of
@@ -266,6 +294,10 @@ pub fn overlay_pick(app: AppHandle, state: State<'_, AppState>, index: usize) ->
 }
 
 /// Region mode: selection in the overlay's CSS pixels (signed w/h allowed).
+///
+/// Normally this finishes the capture and opens the editor (returns `None`). With "annotate on
+/// the frozen screen" it keeps the capture open instead: the other overlays are hidden and the
+/// selection is returned in slice pixels, so this overlay can turn into the annotator.
 #[tauri::command]
 pub fn overlay_select(
     app: AppHandle,
@@ -277,13 +309,29 @@ pub fn overlay_select(
     h: f64,
     ow: f64,
     oh: f64,
-) -> Result<(), String> {
+) -> Result<Option<SliceSelection>, String> {
     let s = active_session(&state)?;
     let mon = s.monitor_rect(index)?;
-    match monitors::selection_in_image(mon, ow, oh, (x, y, w, h)) {
-        Some(r) => finish(&app, r),
-        None => Ok(()), // empty selection: keep waiting
+    if s.annotate {
+        let Some(r) = monitors::selection_in_slice(mon, ow, oh, (x, y, w, h)) else {
+            return Ok(None); // empty selection: keep waiting
+        };
+        // Hide the other overlays and tell them to drop their picture. One event for everyone
+        // carrying the index to keep: the overlays' JS listeners are registered for any target, so
+        // `emit_to(label)` would also reach (and blank) the overlay that is staying.
+        let keep = format!("ov{index}");
+        for (label, win) in app.webview_windows() {
+            if label.starts_with("ov") && label != keep {
+                let _ = win.hide();
+            }
+        }
+        let _ = app.emit("overlay-reset-others", index);
+        return Ok(Some(SliceSelection { x: r.x, y: r.y, w: r.w, h: r.h, slice_w: mon.w, slice_h: mon.h }));
     }
+    if let Some(r) = monitors::selection_in_image(mon, ow, oh, (x, y, w, h)) {
+        finish(&app, r)?;
+    }
+    Ok(None) // empty selections keep waiting
 }
 
 #[tauri::command]

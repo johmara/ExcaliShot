@@ -76,6 +76,7 @@ export default function Settings() {
   const [status, setStatus] = useState<ShortcutStatus>();
   const [msg, setMsg] = useState("");
   const [autostart, setAutostart] = useState(false);
+  const [annotate, setAnnotate] = useState(false);
   const [update, setUpdate] = useState<UpdateStatus>({ state: "idle" });
   const [version, setVersion] = useState("");
 
@@ -93,6 +94,7 @@ export default function Settings() {
 
   useEffect(() => {
     invoke<boolean>("autostart_get").then(setAutostart, () => {});
+    invoke<boolean>("annotate_get").then(setAnnotate, () => {});
   }, []);
 
   useEffect(() => {
@@ -255,6 +257,25 @@ export default function Settings() {
         {update.state === "available" && !update.canInstall && !update.canDownload && (
           <p className="hint">This installation cannot update itself; install the new package over it.</p>
         )}
+      </section>
+
+      <section className="island">
+        <h2>Region capture</h2>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={annotate}
+            onChange={(e) => {
+              const enabled = e.currentTarget.checked;
+              invoke("annotate_set", { enabled }).then(
+                () => setAnnotate(enabled),
+                (err) => setMsg(`Could not change the setting: ${err}`),
+              );
+            }}
+          />
+          Annotate on the frozen screen after selecting a region (Flameshot style)
+        </label>
+        <p className="hint">Off: the selection opens in the editor window.</p>
       </section>
 
       <section className="island">
