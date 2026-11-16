@@ -129,6 +129,7 @@ export default function Editor() {
         {initial && (
           <Excalidraw
             initialData={initial}
+            autoFocus // otherwise the keyboard shortcuts only work after clicking a tool
             excalidrawAPI={(api) => {
               apiRef.current = api;
               setApiReady(true);

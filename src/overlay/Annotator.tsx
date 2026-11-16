@@ -134,6 +134,7 @@ export default function Annotator({ src, sel }: { src: string; sel: SliceSelecti
       {initial && (
         <Excalidraw
           initialData={initial}
+          autoFocus // otherwise the keyboard shortcuts only work after clicking a tool
           excalidrawAPI={(api) => {
             apiRef.current = api;
           }}
