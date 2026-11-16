@@ -31,10 +31,10 @@ Flameshot-style one.
 - On `overlay-arm` in region mode with the setting on, start preloading the Excalidraw chunk (`React.lazy`) so it is ready by the time the selection ends.
 - On drag end, instead of `overlay_select`: tell Rust the selection is made and which overlay owns it; Rust hides the other overlays (not cancel), keeps the session. The owning overlay mounts Excalidraw with its slice as a locked image.
 - Scale: image elements are in physical pixels, so the viewport zoom is set to css-size / physical-size to fit the monitor exactly; the selection is stored in scene units.
-- Export: full-monitor scene PNG at native resolution, sent to Rust with the selection and overlay size; Rust maps it with `monitors::selection_in_image` logic (relative to the monitor slice) and crops with `capture::crop_png`, then copies or saves and hides overlays. Cropping happens in Rust so it reuses the tested math.
+- Export (as built): full-monitor scene exported with `exportToCanvas` at native resolution and cropped to the selection in the browser (canvas), then sent to the existing `copy_png` / `save_png` commands; `cancel_capture` then clears the capture. Rust only supplies the selection in slice pixels (`monitors::selection_in_slice`).
 - Reuse the editor's export, key handling and message code by extracting them from `Editor.tsx` into a shared module rather than duplicating.
-- Dim mask outside the selection is drawn as an overlay `div` above the canvas with `pointer-events: none`.
-- Esc: Excalidraw consumes Esc for tool changes; first Esc with a tool active keeps Excalidraw's behavior, Esc with nothing in progress cancels the capture.
+- Dim mask (as built): baked into the locked background image (the area outside the selection is darkened), so it never appears in the export. The overlay also keeps the plain frozen picture and a mask underneath, so there is never a blank frame while Excalidraw loads.
+- Esc: cancels the capture, except while Excalidraw has something of its own in progress (typing text, drawing a shape, an open dialog/menu/popup), where it closes that first. (First version required Excalidraw to be idle, which made Esc look broken after drawing.)
 
 ## Left to the builder
 - Exact placement of the Copy/Save buttons in the overlay (the editor has a top bar; the overlay needs a floating pair near the selection or top corner).

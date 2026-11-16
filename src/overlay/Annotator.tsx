@@ -99,19 +99,21 @@ export default function Annotator({ src, sel }: { src: string; sel: SliceSelecti
 
   useCopySaveKeys(apiRef, run);
 
-  // Esc cancels the capture, but only when Excalidraw has nothing of its own to cancel
-  // (a tool other than selection, text being edited, a shape being drawn, a selection).
+  // Esc cancels the capture, like in the region selector. It is left to Excalidraw only while
+  // something of Excalidraw's own is in progress: typing text, drawing a shape, or an open
+  // dialog, menu or popup (Esc closes those first).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !apiRef.current) return;
+      const t = e.target as HTMLElement;
+      const typing = t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable;
       const s = apiRef.current.getAppState();
       const busy =
-        s.activeTool?.type !== "selection" ||
+        typing ||
         s.editingTextElement ||
         s.newElement ||
         s.multiElement ||
         s.selectedLinearElement?.isEditing ||
-        Object.keys(s.selectedElementIds).length > 0 ||
         s.openDialog ||
         s.openMenu ||
         s.openPopup;
