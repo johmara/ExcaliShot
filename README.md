@@ -20,7 +20,7 @@ Capture, draw arrows and boxes on it, paste it into a chat.
 | Ubuntu / GNOME (Wayland) | Working (xdg-desktop-portal) | Working (portal GlobalShortcuts, or a desktop keybinding calling the CLI) |
 | Other Linux (KDE, X11, ...) | Portal-based, untested | Portal-based, untested |
 | macOS | Implemented (`xcap`), built by CI, **not tested on a real Mac** | Implemented, shortcuts editable in the settings window, **untested** |
-| Windows | Implemented (`xcap`), built by CI, **not tested on a real PC** | Implemented, shortcuts editable in the settings window, **untested** |
+| Windows | working in win11 | Working shortcuts editable in the settings window |
 
 Tested so far on Ubuntu 26.04 (GNOME, Wayland, three monitors). Contributions and test reports for the other platforms are welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
